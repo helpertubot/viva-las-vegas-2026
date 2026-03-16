@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Friends Bracket Pool — FastAPI backend with SQLite."""
+"""Friends Bracket Pool — FastAPI backend with PostgreSQL (Neon)."""
 import json
 import os
 import sys
@@ -17,7 +17,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional
-import sqlite3
+import psycopg2
+import psycopg2.extras
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, stream=sys.stdout,
@@ -37,112 +38,118 @@ def verify_password(password: str, stored_hash: str) -> bool:
     salt, h = stored_hash.split(":", 1)
     return hashlib.sha256(f"{salt}:{password}".encode()).hexdigest() == h
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pool.db")
-logger.info(f"DB_PATH = {DB_PATH}")
-logger.info(f"DB exists = {os.path.exists(DB_PATH)}")
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql://neondb_owner:npg_bkNlfWGCVD95@ep-dawn-lake-am5wefih-pooler.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require"
+)
+logger.info(f"Connecting to PostgreSQL...")
 
 def get_db():
-    db = sqlite3.connect(DB_PATH, check_same_thread=False)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA journal_mode=WAL")
-    db.execute("PRAGMA foreign_keys=ON")
-    return db
+    conn = psycopg2.connect(DATABASE_URL)
+    conn.autocommit = False
+    return conn
 
-def init_db(db):
-    db.executescript("""
+def dict_row(cursor):
+    """Convert a cursor row to a dict."""
+    if cursor.description is None:
+        return None
+    columns = [col.name for col in cursor.description]
+    def make_dict(row):
+        return dict(zip(columns, row)) if row else None
+    return make_dict
+
+def fetchall_dict(cursor):
+    """Fetch all rows as list of dicts."""
+    if cursor.description is None:
+        return []
+    columns = [col.name for col in cursor.description]
+    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+def fetchone_dict(cursor):
+    """Fetch one row as dict."""
+    if cursor.description is None:
+        return None
+    columns = [col.name for col in cursor.description]
+    row = cursor.fetchone()
+    return dict(zip(columns, row)) if row else None
+
+def init_db(conn):
+    cur = conn.cursor()
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             email TEXT UNIQUE NOT NULL,
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL DEFAULT '',
             display_name TEXT NOT NULL,
             avatar_data TEXT DEFAULT '',
             is_admin INTEGER DEFAULT 0,
-            created_at REAL NOT NULL
+            created_at DOUBLE PRECISION NOT NULL
         );
+    """)
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS brackets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id),
             label TEXT NOT NULL DEFAULT 'Bracket 1',
             picks TEXT NOT NULL DEFAULT '{}',
             submitted INTEGER DEFAULT 0,
-            submitted_at REAL,
-            created_at REAL NOT NULL,
-            updated_at REAL NOT NULL,
-            FOREIGN KEY (user_id) REFERENCES users(id)
+            submitted_at DOUBLE PRECISION,
+            created_at DOUBLE PRECISION NOT NULL,
+            updated_at DOUBLE PRECISION NOT NULL
         );
+    """)
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS site_settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL DEFAULT ''
         );
+    """)
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS bets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            creator_id INTEGER NOT NULL,
-            about_user_id INTEGER,
+            id SERIAL PRIMARY KEY,
+            creator_id INTEGER NOT NULL REFERENCES users(id),
+            about_user_id INTEGER REFERENCES users(id),
             bet_type TEXT NOT NULL DEFAULT 'friend',
             description TEXT NOT NULL,
-            amount REAL NOT NULL,
-            taker_id INTEGER,
-            taken_at REAL,
-            created_at REAL NOT NULL,
-            FOREIGN KEY (creator_id) REFERENCES users(id),
-            FOREIGN KEY (about_user_id) REFERENCES users(id),
-            FOREIGN KEY (taker_id) REFERENCES users(id)
+            amount DOUBLE PRECISION NOT NULL,
+            taker_id INTEGER REFERENCES users(id),
+            taken_at DOUBLE PRECISION,
+            created_at DOUBLE PRECISION NOT NULL
         );
     """)
-    db.commit()
+    conn.commit()
+    cur.close()
     logger.info("DB tables initialized")
 
-def seed_admin(db):
+def seed_admin(conn):
     """Ensure the admin user exists."""
-    row = db.execute("SELECT id FROM users WHERE LOWER(username) = 'paul'").fetchone()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM users WHERE LOWER(username) = 'paul'")
+    row = cur.fetchone()
     if not row:
         now = time.time()
         pw_hash = hash_password("admin2026")
-        db.execute(
-            "INSERT INTO users (email, username, password_hash, display_name, is_admin, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            ['prcummins@gmail.com', 'paul', pw_hash, 'Paul', 1, now]
+        cur.execute(
+            "INSERT INTO users (email, username, password_hash, display_name, is_admin, created_at) VALUES (%s, %s, %s, %s, %s, %s)",
+            ('prcummins@gmail.com', 'paul', pw_hash, 'Paul', 1, now)
         )
-        db.commit()
+        conn.commit()
         logger.info("Admin user 'paul' seeded")
     else:
         logger.info("Admin user 'paul' already exists")
-
-def migrate_db(db):
-    """Migrate existing brackets table: remove UNIQUE on user_id, add label column."""
-    cols = [row[1] for row in db.execute("PRAGMA table_info(brackets)").fetchall()]
-    if "label" in cols:
-        return  # Already migrated
-
-    db.executescript("""
-        CREATE TABLE IF NOT EXISTS brackets_new (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            label TEXT NOT NULL DEFAULT 'Bracket 1',
-            picks TEXT NOT NULL DEFAULT '{}',
-            submitted INTEGER DEFAULT 0,
-            submitted_at REAL,
-            created_at REAL NOT NULL,
-            updated_at REAL NOT NULL,
-            FOREIGN KEY (user_id) REFERENCES users(id)
-        );
-        INSERT INTO brackets_new (id, user_id, label, picks, submitted, submitted_at, created_at, updated_at)
-            SELECT id, user_id, 'Bracket 1', picks, submitted, submitted_at, created_at, updated_at FROM brackets;
-        DROP TABLE brackets;
-        ALTER TABLE brackets_new RENAME TO brackets;
-    """)
-    db.commit()
-    logger.info("DB migration complete")
+    cur.close()
 
 try:
     db = get_db()
     init_db(db)
-    migrate_db(db)
     seed_admin(db)
-    logger.info("DB setup complete")
     # Verify DB is working
-    test_rows = db.execute("SELECT id, username FROM users").fetchall()
-    logger.info(f"Users in DB: {[dict(r) for r in test_rows]}")
+    cur = db.cursor()
+    cur.execute("SELECT id, username FROM users")
+    test_rows = fetchall_dict(cur)
+    cur.close()
+    logger.info(f"DB setup complete. Users: {test_rows}")
 except Exception as e:
     logger.error(f"DB SETUP ERROR: {e}")
     logger.error(traceback.format_exc())
@@ -151,10 +158,31 @@ except Exception as e:
 # Bet reveal time: Saturday March 21, 2026 at 12:00 PM PDT (UTC-7) = 19:00 UTC
 BET_REVEAL_TIMESTAMP = 1774314000  # March 21 2026 12:00 PM PDT
 
+def get_cursor():
+    """Get a cursor, reconnecting if needed."""
+    global db
+    try:
+        db.isolation_level
+        cur = db.cursor()
+        cur.execute("SELECT 1")
+        cur.fetchone()
+        cur.close()
+    except Exception:
+        logger.info("Reconnecting to PostgreSQL...")
+        try:
+            db.close()
+        except Exception:
+            pass
+        db = get_db()
+    return db.cursor()
+
 @asynccontextmanager
 async def lifespan(app):
     yield
-    db.close()
+    try:
+        db.close()
+    except Exception:
+        pass
 
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -197,13 +225,14 @@ def login(req: LoginRequest):
     try:
         username = req.username.strip().lower()
         logger.info(f"Login attempt for: {username}")
-        row = db.execute("SELECT * FROM users WHERE LOWER(username) = ?", [username]).fetchone()
-        if not row:
+        cur = get_cursor()
+        cur.execute("SELECT * FROM users WHERE LOWER(username) = %s", (username,))
+        user = fetchone_dict(cur)
+        cur.close()
+        if not user:
             raise HTTPException(status_code=401, detail="Invalid username or password")
-        user = dict(row)
         if not verify_password(req.password, user.get("password_hash", "")):
             raise HTTPException(status_code=401, detail="Invalid username or password")
-        # Don't send password_hash to client
         user.pop("password_hash", None)
         return {"user": user}
     except HTTPException:
@@ -217,8 +246,11 @@ def login(req: LoginRequest):
 @app.get("/api/users")
 def list_users():
     try:
-        rows = db.execute("SELECT id, email, username, display_name, avatar_data, is_admin FROM users ORDER BY display_name").fetchall()
-        return [dict(r) for r in rows]
+        cur = get_cursor()
+        cur.execute("SELECT id, email, username, display_name, avatar_data, is_admin FROM users ORDER BY display_name")
+        rows = fetchall_dict(cur)
+        cur.close()
+        return rows
     except Exception as e:
         logger.error(f"LIST_USERS ERROR: {e}")
         logger.error(traceback.format_exc())
@@ -230,8 +262,10 @@ def reset_password(user_id: int, req: dict):
     if not new_password:
         raise HTTPException(status_code=400, detail="Password is required")
     pw_hash = hash_password(new_password)
-    db.execute("UPDATE users SET password_hash = ? WHERE id = ?", [pw_hash, user_id])
+    cur = get_cursor()
+    cur.execute("UPDATE users SET password_hash = %s WHERE id = %s", (pw_hash, user_id))
     db.commit()
+    cur.close()
     return {"ok": True}
 
 @app.post("/api/admin/users")
@@ -240,26 +274,34 @@ def add_user(req: AddUserRequest):
     username = req.username.strip().lower()
     if not username or not req.password:
         raise HTTPException(status_code=400, detail="Username and password are required")
-    existing = db.execute("SELECT id FROM users WHERE LOWER(email) = ?", [email]).fetchone()
-    if existing:
+    cur = get_cursor()
+    cur.execute("SELECT id FROM users WHERE LOWER(email) = %s", (email,))
+    if cur.fetchone():
+        cur.close()
         raise HTTPException(status_code=409, detail="Email already exists")
-    existing_un = db.execute("SELECT id FROM users WHERE LOWER(username) = ?", [username]).fetchone()
-    if existing_un:
+    cur.execute("SELECT id FROM users WHERE LOWER(username) = %s", (username,))
+    if cur.fetchone():
+        cur.close()
         raise HTTPException(status_code=409, detail="Username already taken")
     now = time.time()
     pw_hash = hash_password(req.password)
-    cur = db.execute("INSERT INTO users (email, username, password_hash, display_name, is_admin, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                     [email, username, pw_hash, req.display_name, req.is_admin, now])
+    cur.execute(
+        "INSERT INTO users (email, username, password_hash, display_name, is_admin, created_at) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+        (email, username, pw_hash, req.display_name, req.is_admin, now)
+    )
+    user_id = cur.fetchone()[0]
     db.commit()
-    user_id = cur.lastrowid
+    cur.close()
     return {"id": user_id, "email": email, "username": username, "display_name": req.display_name}
 
 @app.delete("/api/admin/users/{user_id}")
 def remove_user(user_id: int):
-    db.execute("DELETE FROM bets WHERE creator_id = ? OR about_user_id = ? OR taker_id = ?", [user_id, user_id, user_id])
-    db.execute("DELETE FROM brackets WHERE user_id = ?", [user_id])
-    db.execute("DELETE FROM users WHERE id = ?", [user_id])
+    cur = get_cursor()
+    cur.execute("DELETE FROM bets WHERE creator_id = %s OR about_user_id = %s OR taker_id = %s", (user_id, user_id, user_id))
+    cur.execute("DELETE FROM brackets WHERE user_id = %s", (user_id,))
+    cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
     db.commit()
+    cur.close()
     return {"deleted": user_id}
 
 @app.post("/api/admin/avatar/{user_id}")
@@ -270,21 +312,25 @@ async def upload_avatar(user_id: int, file: UploadFile = File(...)):
     b64 = base64.b64encode(data).decode()
     mime = file.content_type or "image/jpeg"
     data_url = f"data:{mime};base64,{b64}"
-    db.execute("UPDATE users SET avatar_data = ? WHERE id = ?", [data_url, user_id])
+    cur = get_cursor()
+    cur.execute("UPDATE users SET avatar_data = %s WHERE id = %s", (data_url, user_id))
     db.commit()
+    cur.close()
     return {"ok": True}
 
 # ---- Brackets ----
 @app.get("/api/brackets")
 def list_brackets():
-    rows = db.execute("""
+    cur = get_cursor()
+    cur.execute("""
         SELECT b.id, b.user_id, b.label, b.picks, b.submitted, b.submitted_at, u.display_name, u.avatar_data
         FROM brackets b JOIN users u ON b.user_id = u.id
         ORDER BY u.display_name, b.label
-    """).fetchall()
+    """)
+    rows = fetchall_dict(cur)
+    cur.close()
     results = []
-    for r in rows:
-        d = dict(r)
+    for d in rows:
         d["picks"] = json.loads(d["picks"]) if d["picks"] else {}
         d["pick_count"] = len(d["picks"])
         results.append(d)
@@ -292,69 +338,90 @@ def list_brackets():
 
 @app.get("/api/brackets/{user_id}")
 def get_user_brackets(user_id: int):
-    rows = db.execute("""
+    cur = get_cursor()
+    cur.execute("""
         SELECT b.*, u.display_name, u.avatar_data
         FROM brackets b JOIN users u ON b.user_id = u.id
-        WHERE b.user_id = ?
+        WHERE b.user_id = %s
         ORDER BY b.label
-    """, [user_id]).fetchall()
+    """, (user_id,))
+    rows = fetchall_dict(cur)
+    cur.close()
     results = []
-    for r in rows:
-        d = dict(r)
+    for d in rows:
         d["picks"] = json.loads(d["picks"]) if d["picks"] else {}
         results.append(d)
     return results
 
 @app.post("/api/brackets")
 def create_bracket(req: CreateBracketRequest):
-    # Count existing brackets for this user to auto-label
-    count = db.execute("SELECT COUNT(*) as c FROM brackets WHERE user_id = ?", [req.user_id]).fetchone()["c"]
+    cur = get_cursor()
+    cur.execute("SELECT COUNT(*) as c FROM brackets WHERE user_id = %s", (req.user_id,))
+    count = cur.fetchone()[0]
     label = f"Bracket {count + 1}"
     now = time.time()
-    cur = db.execute(
-        "INSERT INTO brackets (user_id, label, picks, created_at, updated_at) VALUES (?, ?, '{}', ?, ?)",
-        [req.user_id, label, now, now]
+    cur.execute(
+        "INSERT INTO brackets (user_id, label, picks, created_at, updated_at) VALUES (%s, %s, '{}', %s, %s) RETURNING id",
+        (req.user_id, label, now, now)
     )
+    bracket_id = cur.fetchone()[0]
     db.commit()
-    return {"id": cur.lastrowid, "label": label}
+    cur.close()
+    return {"id": bracket_id, "label": label}
 
 @app.put("/api/brackets/{bracket_id}/picks")
 def save_picks(bracket_id: int, req: SavePicksRequest):
-    bracket = db.execute("SELECT * FROM brackets WHERE id = ?", [bracket_id]).fetchone()
+    cur = get_cursor()
+    cur.execute("SELECT * FROM brackets WHERE id = %s", (bracket_id,))
+    bracket = fetchone_dict(cur)
     if not bracket:
+        cur.close()
         raise HTTPException(status_code=404, detail="Bracket not found")
     if bracket["submitted"]:
+        cur.close()
         raise HTTPException(status_code=400, detail="Bracket already submitted and locked")
     now = time.time()
-    db.execute("UPDATE brackets SET picks = ?, updated_at = ? WHERE id = ?",
-               [json.dumps(req.picks), now, bracket_id])
+    cur.execute("UPDATE brackets SET picks = %s, updated_at = %s WHERE id = %s",
+               (json.dumps(req.picks), now, bracket_id))
     db.commit()
+    cur.close()
     return {"ok": True}
 
 @app.post("/api/brackets/{bracket_id}/submit")
 def submit_bracket(bracket_id: int, req: SubmitBracketRequest):
-    bracket = db.execute("SELECT * FROM brackets WHERE id = ?", [bracket_id]).fetchone()
+    cur = get_cursor()
+    cur.execute("SELECT * FROM brackets WHERE id = %s", (bracket_id,))
+    bracket = fetchone_dict(cur)
     if not bracket:
+        cur.close()
         raise HTTPException(status_code=404, detail="Bracket not found")
     if bracket["submitted"]:
+        cur.close()
         raise HTTPException(status_code=400, detail="Bracket already submitted")
     now = time.time()
-    db.execute("UPDATE brackets SET picks = ?, submitted = 1, submitted_at = ?, updated_at = ? WHERE id = ?",
-               [json.dumps(req.picks), now, now, bracket_id])
+    cur.execute("UPDATE brackets SET picks = %s, submitted = 1, submitted_at = %s, updated_at = %s WHERE id = %s",
+               (json.dumps(req.picks), now, now, bracket_id))
     db.commit()
+    cur.close()
     return {"ok": True, "submitted_at": now}
 
 @app.delete("/api/brackets/{bracket_id}")
 def delete_bracket(bracket_id: int, viewer_id: int = 0):
-    bracket = db.execute("SELECT * FROM brackets WHERE id = ?", [bracket_id]).fetchone()
+    cur = get_cursor()
+    cur.execute("SELECT * FROM brackets WHERE id = %s", (bracket_id,))
+    bracket = fetchone_dict(cur)
     if not bracket:
+        cur.close()
         raise HTTPException(status_code=404, detail="Bracket not found")
     if bracket["user_id"] != viewer_id:
+        cur.close()
         raise HTTPException(status_code=403, detail="Can only delete your own brackets")
     if bracket["submitted"]:
+        cur.close()
         raise HTTPException(status_code=400, detail="Cannot delete a submitted bracket")
-    db.execute("DELETE FROM brackets WHERE id = ?", [bracket_id])
+    cur.execute("DELETE FROM brackets WHERE id = %s", (bracket_id,))
     db.commit()
+    cur.close()
     return {"deleted": bracket_id}
 
 # ---- Bets ----
@@ -365,7 +432,8 @@ def list_bets(viewer_id: Optional[int] = None):
     now = time.time()
     revealed = now >= BET_REVEAL_TIMESTAMP
     
-    rows = db.execute("""
+    cur = get_cursor()
+    cur.execute("""
         SELECT b.*, 
             creator.display_name as creator_name,
             about.display_name as about_name,
@@ -375,19 +443,20 @@ def list_bets(viewer_id: Optional[int] = None):
         LEFT JOIN users about ON b.about_user_id = about.id
         LEFT JOIN users taker ON b.taker_id = taker.id
         ORDER BY b.created_at DESC
-    """).fetchall()
+    """)
+    rows = fetchall_dict(cur)
     
     results = []
-    for r in rows:
-        d = dict(r)
-        # If not revealed and this is a friend bet about the viewer, hide it
+    for d in rows:
         if not revealed and viewer_id and d["about_user_id"] == viewer_id:
             continue
         results.append(d)
 
     # Count bets on each user
-    on_rows = db.execute("SELECT about_user_id, COUNT(*) as c FROM bets WHERE about_user_id IS NOT NULL GROUP BY about_user_id").fetchall()
+    cur.execute("SELECT about_user_id, COUNT(*) as c FROM bets WHERE about_user_id IS NOT NULL GROUP BY about_user_id")
+    on_rows = fetchall_dict(cur)
     bets_on_count = {r["about_user_id"]: r["c"] for r in on_rows}
+    cur.close()
 
     return {"bets": results, "revealed": revealed, "reveal_time": BET_REVEAL_TIMESTAMP, "bets_on_count": bets_on_count}
 
@@ -402,61 +471,80 @@ def create_bet(req: CreateBetRequest, viewer_id: int = 0):
     if req.about_user_id == viewer_id:
         raise HTTPException(status_code=400, detail="Cannot bet about yourself")
 
-    # Check bet count for this user (max 3 created)
-    count = db.execute("SELECT COUNT(*) as c FROM bets WHERE creator_id = ?", [viewer_id]).fetchone()["c"]
+    cur = get_cursor()
+    cur.execute("SELECT COUNT(*) as c FROM bets WHERE creator_id = %s", (viewer_id,))
+    count = cur.fetchone()[0]
     if count >= 3:
+        cur.close()
         raise HTTPException(status_code=400, detail="You can only create 3 bets")
 
-    # Check max 3 bets ON any single person
-    on_count = db.execute("SELECT COUNT(*) as c FROM bets WHERE about_user_id = ?", [req.about_user_id]).fetchone()["c"]
+    cur.execute("SELECT COUNT(*) as c FROM bets WHERE about_user_id = %s", (req.about_user_id,))
+    on_count = cur.fetchone()[0]
     if on_count >= 3:
+        cur.close()
         raise HTTPException(status_code=400, detail="Max 3 bets can be placed about this person")
 
     now = time.time()
-    cur = db.execute(
-        "INSERT INTO bets (creator_id, about_user_id, bet_type, description, amount, created_at) VALUES (?, ?, 'friend', ?, ?, ?)",
-        [viewer_id, req.about_user_id, req.description, req.amount, now]
+    cur.execute(
+        "INSERT INTO bets (creator_id, about_user_id, bet_type, description, amount, created_at) VALUES (%s, %s, 'friend', %s, %s, %s) RETURNING id",
+        (viewer_id, req.about_user_id, req.description, req.amount, now)
     )
+    bet_id = cur.fetchone()[0]
     db.commit()
-    return {"id": cur.lastrowid}
+    cur.close()
+    return {"id": bet_id}
 
 @app.post("/api/bets/{bet_id}/take")
 def take_bet(bet_id: int, viewer_id: int = 0):
     if viewer_id == 0:
         raise HTTPException(status_code=400, detail="Must be logged in")
-    bet = db.execute("SELECT * FROM bets WHERE id = ?", [bet_id]).fetchone()
+    cur = get_cursor()
+    cur.execute("SELECT * FROM bets WHERE id = %s", (bet_id,))
+    bet = fetchone_dict(cur)
     if not bet:
+        cur.close()
         raise HTTPException(status_code=404, detail="Bet not found")
     if bet["taker_id"]:
+        cur.close()
         raise HTTPException(status_code=400, detail="Bet already taken")
     if bet["creator_id"] == viewer_id:
+        cur.close()
         raise HTTPException(status_code=400, detail="Cannot take your own bet")
-    # For friend bets, you can't take a bet about yourself
     if bet["about_user_id"] and bet["about_user_id"] == viewer_id:
+        cur.close()
         raise HTTPException(status_code=400, detail="Cannot take a bet about yourself")
     
     now = time.time()
-    db.execute("UPDATE bets SET taker_id = ?, taken_at = ? WHERE id = ?", [viewer_id, now, bet_id])
+    cur.execute("UPDATE bets SET taker_id = %s, taken_at = %s WHERE id = %s", (viewer_id, now, bet_id))
     db.commit()
+    cur.close()
     return {"ok": True}
 
 @app.delete("/api/bets/{bet_id}")
 def delete_bet(bet_id: int, viewer_id: int = 0):
-    bet = db.execute("SELECT * FROM bets WHERE id = ?", [bet_id]).fetchone()
+    cur = get_cursor()
+    cur.execute("SELECT * FROM bets WHERE id = %s", (bet_id,))
+    bet = fetchone_dict(cur)
     if not bet:
+        cur.close()
         raise HTTPException(status_code=404, detail="Bet not found")
     if bet["creator_id"] != viewer_id:
+        cur.close()
         raise HTTPException(status_code=403, detail="Can only delete your own bets")
     if bet["taker_id"]:
+        cur.close()
         raise HTTPException(status_code=400, detail="Cannot delete a bet that has been taken")
-    db.execute("DELETE FROM bets WHERE id = ?", [bet_id])
+    cur.execute("DELETE FROM bets WHERE id = %s", (bet_id,))
     db.commit()
+    cur.close()
     return {"deleted": bet_id}
 
 @app.get("/api/config")
 def get_config():
-    # Load site settings
-    rows = db.execute("SELECT key, value FROM site_settings").fetchall()
+    cur = get_cursor()
+    cur.execute("SELECT key, value FROM site_settings")
+    rows = fetchall_dict(cur)
+    cur.close()
     settings = {r['key']: r['value'] for r in rows}
     return {
         "bet_reveal_timestamp": BET_REVEAL_TIMESTAMP,
@@ -474,8 +562,13 @@ def update_setting(req: UpdateSettingRequest):
     allowed_keys = {"banner_position"}
     if req.key not in allowed_keys:
         raise HTTPException(400, "Invalid setting key")
-    db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)", (req.key, req.value))
+    cur = get_cursor()
+    cur.execute(
+        "INSERT INTO site_settings (key, value) VALUES (%s, %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+        (req.key, req.value)
+    )
     db.commit()
+    cur.close()
     return {"ok": True}
 
 # ---- Serve static files ----
