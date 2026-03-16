@@ -2,10 +2,13 @@
 """Friends Bracket Pool — FastAPI backend with SQLite."""
 import json
 import os
+import sys
 import time
 import base64
 import hashlib
 import secrets
+import logging
+import traceback
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
@@ -15,6 +18,11 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional
 import sqlite3
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, stream=sys.stdout,
+                    format='%(asctime)s %(levelname)s %(message)s')
+logger = logging.getLogger(__name__)
 
 def hash_password(password: str) -> str:
     """Hash a password with a random salt using SHA-256."""
@@ -30,6 +38,8 @@ def verify_password(password: str, stored_hash: str) -> bool:
     return hashlib.sha256(f"{salt}:{password}".encode()).hexdigest() == h
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pool.db")
+logger.info(f"DB_PATH = {DB_PATH}")
+logger.info(f"DB exists = {os.path.exists(DB_PATH)}")
 
 def get_db():
     db = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -81,10 +91,25 @@ def init_db(db):
         );
     """)
     db.commit()
+    logger.info("DB tables initialized")
+
+def seed_admin(db):
+    """Ensure the admin user exists."""
+    row = db.execute("SELECT id FROM users WHERE LOWER(username) = 'paul'").fetchone()
+    if not row:
+        now = time.time()
+        pw_hash = hash_password("admin2026")
+        db.execute(
+            "INSERT INTO users (email, username, password_hash, display_name, is_admin, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            ['prcummins@gmail.com', 'paul', pw_hash, 'Paul', 1, now]
+        )
+        db.commit()
+        logger.info("Admin user 'paul' seeded")
+    else:
+        logger.info("Admin user 'paul' already exists")
 
 def migrate_db(db):
     """Migrate existing brackets table: remove UNIQUE on user_id, add label column."""
-    # Check if label column already exists
     cols = [row[1] for row in db.execute("PRAGMA table_info(brackets)").fetchall()]
     if "label" in cols:
         return  # Already migrated
@@ -107,10 +132,21 @@ def migrate_db(db):
         ALTER TABLE brackets_new RENAME TO brackets;
     """)
     db.commit()
+    logger.info("DB migration complete")
 
-db = get_db()
-init_db(db)
-migrate_db(db)
+try:
+    db = get_db()
+    init_db(db)
+    migrate_db(db)
+    seed_admin(db)
+    logger.info("DB setup complete")
+    # Verify DB is working
+    test_rows = db.execute("SELECT id, username FROM users").fetchall()
+    logger.info(f"Users in DB: {[dict(r) for r in test_rows]}")
+except Exception as e:
+    logger.error(f"DB SETUP ERROR: {e}")
+    logger.error(traceback.format_exc())
+    raise
 
 # Bet reveal time: Saturday March 21, 2026 at 12:00 PM PDT (UTC-7) = 19:00 UTC
 BET_REVEAL_TIMESTAMP = 1774314000  # March 21 2026 12:00 PM PDT
@@ -158,22 +194,35 @@ class UpdateAvatarRequest(BaseModel):
 # ---- Auth (username + password) ----
 @app.post("/api/login")
 def login(req: LoginRequest):
-    username = req.username.strip().lower()
-    row = db.execute("SELECT * FROM users WHERE LOWER(username) = ?", [username]).fetchone()
-    if not row:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-    user = dict(row)
-    if not verify_password(req.password, user.get("password_hash", "")):
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-    # Don't send password_hash to client
-    user.pop("password_hash", None)
-    return {"user": user}
+    try:
+        username = req.username.strip().lower()
+        logger.info(f"Login attempt for: {username}")
+        row = db.execute("SELECT * FROM users WHERE LOWER(username) = ?", [username]).fetchone()
+        if not row:
+            raise HTTPException(status_code=401, detail="Invalid username or password")
+        user = dict(row)
+        if not verify_password(req.password, user.get("password_hash", "")):
+            raise HTTPException(status_code=401, detail="Invalid username or password")
+        # Don't send password_hash to client
+        user.pop("password_hash", None)
+        return {"user": user}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"LOGIN ERROR: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ---- Users ----
 @app.get("/api/users")
 def list_users():
-    rows = db.execute("SELECT id, email, username, display_name, avatar_data, is_admin FROM users ORDER BY display_name").fetchall()
-    return [dict(r) for r in rows]
+    try:
+        rows = db.execute("SELECT id, email, username, display_name, avatar_data, is_admin FROM users ORDER BY display_name").fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"LIST_USERS ERROR: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/admin/reset-password/{user_id}")
 def reset_password(user_id: int, req: dict):
