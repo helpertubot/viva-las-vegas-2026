@@ -68,11 +68,15 @@ let allUsers = [];
 let allBrackets = [];
 let currentPicks = {};
 let currentBracketId = null;
+let currentTiebreaker = null;
 let currentRegion = "East";
 let viewingUserId = null;
 let viewingBracketId = null;
 let betData = { bets: [], revealed: false, reveal_time: 0, bets_on_count: {} };
 let config = { entry_fee: 50, max_bets_per_user: 3, bet_reveal_timestamp: 0 };
+let leaderboardData = { leaderboard: [], championship_combined: null, games_completed: 0 };
+let tournamentResults = { results: [] };
+let liveSchedule = { games: [] };
 
 // ===== API HELPERS =====
 async function apiGet(path) {
@@ -208,6 +212,7 @@ function renderHeader() {
         <button onclick="navigate('home')" class="${currentView === 'home' ? 'active' : ''}">Home</button>
         <button onclick="navigate('bracket')" class="${currentView === 'bracket' ? 'active' : ''}">My Brackets</button>
         <button onclick="navigate('bets')" class="${currentView === 'bets' ? 'active' : ''}">Bets</button>
+        <button onclick="navigate('leaderboard')" class="${currentView === 'leaderboard' ? 'active' : ''}">Leaderboard</button>
         ${currentUser.is_admin ? `<button onclick="navigate('admin')" class="${currentView === 'admin' ? 'active' : ''}">Admin</button>` : ''}
       </nav>
       <div class="header-user">
@@ -234,6 +239,10 @@ function renderMobileNav() {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
         Bets
       </button>
+      <button onclick="navigate('leaderboard')" class="${currentView === 'leaderboard' ? 'active' : ''}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21V8m4 13V4m4 17v-9"/></svg>
+        Board
+      </button>
       ${currentUser.is_admin ? `
       <button onclick="navigate('admin')" class="${currentView === 'admin' ? 'active' : ''}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
@@ -249,6 +258,7 @@ function renderCurrentView() {
     case "bracket": return renderMyBracketsPage();
     case "view-bracket": return renderBracketPage(viewingBracketId, true);
     case "bets": return renderBetsPage();
+    case "leaderboard": return renderLeaderboardPage();
     case "profile": return renderProfilePage();
     case "admin": return renderAdminPage();
     default: return renderHome();
@@ -261,6 +271,15 @@ function renderHome() {
   const totalBrackets = allBrackets.length;
   const potSize = submittedBrackets * config.entry_fee;
 
+  // Build best score per user from leaderboard
+  const bestScoreByUser = {};
+  for (const e of (leaderboardData.leaderboard || [])) {
+    if (!(e.user_id in bestScoreByUser) || e.score > bestScoreByUser[e.user_id]) {
+      bestScoreByUser[e.user_id] = e.score;
+    }
+  }
+  const hasTournamentStarted = (leaderboardData.games_completed || 0) > 0;
+
   return `
     <div class="dashboard-grid">
       <div class="stat-card">
@@ -272,12 +291,24 @@ function renderHome() {
         <div class="stat-value">${submittedBrackets} / ${totalBrackets}</div>
       </div>
     </div>
+    <div class="venmo-banner">
+      <div class="venmo-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M19.5 3.6c.6 1 .9 2 .9 3.3 0 4.1-3.5 9.4-6.3 13.1H8.4L6 3.9l5.1-.5 1.2 9.6c1.1-1.8 2.5-4.6 2.5-6.5 0-1.2-.2-2-.5-2.7L19.5 3.6z" fill="#3D95CE"/></svg>
+      </div>
+      <div class="venmo-info">
+        <div class="venmo-label">Pay Entry Fee ($${config.entry_fee}/bracket)</div>
+        <a href="https://venmo.com/u/Paul-Cummins-5" target="_blank" rel="noopener" class="venmo-handle">@Paul-Cummins-5</a>
+      </div>
+      <a href="https://venmo.com/u/Paul-Cummins-5" target="_blank" rel="noopener" class="venmo-pay-btn">Pay Now</a>
+    </div>
+    ${renderLiveScores()}
     <h2 class="section-title">Members</h2>
     <div class="members-grid">
       ${allUsers.map(u => {
         const userBrackets = allBrackets.filter(b => b.user_id === u.id);
         const submittedCount = userBrackets.filter(b => b.submitted).length;
         const betsAbout = betData.bets.filter(b => b.about_user_id === u.id).length;
+        const bestScore = bestScoreByUser[u.id];
         return `
           <div class="member-card" onclick="viewProfile(${u.id})">
             <div class="member-avatar">${renderAvatar(u)}</div>
@@ -288,6 +319,7 @@ function renderHome() {
                 : `<span class="${submittedCount > 0 ? 'submitted' : 'pending'}">${submittedCount}/${userBrackets.length} submitted</span>`
               }
             </div>
+            ${hasTournamentStarted && bestScore !== undefined ? `<div class="member-score">Best: ${bestScore} pts</div>` : ''}
             ${betsAbout > 0 ? `<div class="member-bet-count">${betsAbout} bet${betsAbout !== 1 ? 's' : ''} about them</div>` : ''}
           </div>
         `;
@@ -343,6 +375,7 @@ function renderBracketEditor(bracket, myBrackets) {
   const locked = bracket.submitted;
   const picks = locked ? bracket.picks : currentPicks;
   const pickCount = Object.keys(picks).length;
+  const tbValue = locked ? bracket.tiebreaker_score : (currentTiebreaker !== null ? currentTiebreaker : (bracket.tiebreaker_score || ''));
 
   const selectorHtml = myBrackets.length > 1 ? `
     <select onchange="openBracket(parseInt(this.value))" style="font-size:13px; padding:6px 10px; border-radius:6px; border:1px solid var(--navy-200); margin-right:8px;">
@@ -361,6 +394,14 @@ function renderBracketEditor(bracket, myBrackets) {
              <button class="btn-submit-bracket" onclick="confirmSubmit()">Submit Bracket ($${config.entry_fee})</button>`
         }
       </div>
+    </div>
+    <div class="tiebreaker-row">
+      <label class="tiebreaker-label">Championship Tiebreaker:</label>
+      <span style="font-size:12px; color:var(--text-muted);">Predicted total combined score</span>
+      ${locked
+        ? `<span class="tiebreaker-value">${bracket.tiebreaker_score !== null ? bracket.tiebreaker_score : 'Not set'}</span>`
+        : `<input type="number" id="tiebreaker-input" class="tiebreaker-input" placeholder="e.g. 145" min="0" max="500" value="${tbValue || ''}" onchange="currentTiebreaker = this.value ? parseInt(this.value) : null">`
+      }
     </div>
     <div class="region-tabs">
       ${REGIONS.map(r => `
@@ -382,12 +423,25 @@ function renderBracketPage(bracketId, readOnly) {
   const picks = bracket.picks || {};
   const isViewOnly = true;
 
+  // Get scoring info for this bracket from leaderboard
+  const lbEntry = (leaderboardData.leaderboard || []).find(e => e.bracket_id === bracketId);
+  const pickStatus = {};
+  if (lbEntry) {
+    (lbEntry.correct_picks || []).forEach(k => pickStatus[k] = 'correct');
+    (lbEntry.wrong_picks || []).forEach(k => pickStatus[k] = 'wrong');
+    (lbEntry.pending_picks || []).forEach(k => pickStatus[k] = 'pending');
+  }
+
   return `
     <button class="btn-back" onclick="navigate('${viewingUserId ? 'profile' : 'home'}')">← Back</button>
     <div class="bracket-header">
       <h2>${user ? user.display_name : "Unknown"}'s ${escapeHtml(bracket.label)}</h2>
-      ${locked ? '<span class="locked-badge">🔒 Locked</span>' : ''}
+      <div class="bracket-actions">
+        ${locked ? '<span class="locked-badge">🔒 Locked</span>' : ''}
+        ${lbEntry ? `<span style="font-size:14px;font-weight:700;color:var(--navy-700);">${lbEntry.score} pts</span>` : ''}
+      </div>
     </div>
+    ${bracket.tiebreaker_score !== null ? `<div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Tiebreaker: ${bracket.tiebreaker_score}</div>` : ''}
     <div class="region-tabs">
       ${REGIONS.map(r => `
         <button class="${currentRegion === r ? 'active' : ''}" onclick="switchRegion('${r}')">${r}</button>
@@ -395,12 +449,12 @@ function renderBracketPage(bracketId, readOnly) {
       <button class="${currentRegion === 'Final Four' ? 'active' : ''}" onclick="switchRegion('Final Four')">Final Four</button>
     </div>
     <div id="bracket-container">
-      ${currentRegion === 'Final Four' ? renderFinalFour(picks, isViewOnly) : renderRegion(currentRegion, picks, isViewOnly)}
+      ${currentRegion === 'Final Four' ? renderFinalFour(picks, isViewOnly, pickStatus) : renderRegion(currentRegion, picks, isViewOnly, pickStatus)}
     </div>
   `;
 }
 
-function renderRegion(region, picks, locked) {
+function renderRegion(region, picks, locked, pickStatus) {
   const teams = BRACKET_DATA[region].teams;
   const rounds = 4;
 
@@ -426,11 +480,12 @@ function renderRegion(region, picks, locked) {
       const matchKey = `${region}-R${round}-M${m}`;
       const selected = picks[matchKey];
 
+      const pickSt = pickStatus ? pickStatus[matchKey] : null;
       html += `
         <div class="matchup-wrapper" style="grid-column:${col}; grid-row:${rowStart}/${rowEnd};">
           <div class="matchup-pair">
-            ${renderTeamSlot(team1, matchKey, selected, locked)}
-            ${renderTeamSlot(team2, matchKey, selected, locked)}
+            ${renderTeamSlot(team1, matchKey, selected, locked, pickSt)}
+            ${renderTeamSlot(team2, matchKey, selected, locked, pickSt)}
           </div>
         </div>
       `;
@@ -472,23 +527,30 @@ function teamStr(team) {
   return `${team.seed} ${team.name}`;
 }
 
-function renderTeamSlot(team, matchKey, selected, locked) {
+function renderTeamSlot(team, matchKey, selected, locked, pickSt) {
   if (!team) {
     return `<div class="team-slot empty ${locked ? 'locked' : ''}"><span class="seed">-</span><span class="team-name">TBD</span></div>`;
   }
   const ts = teamStr(team);
   const isSelected = selected === ts;
   const clickHandler = locked ? "" : `onclick="makePick('${matchKey}', '${ts.replace(/'/g, "\\'")}')"`;
+  // Pick status coloring: only apply to the selected team
+  let statusClass = '';
+  if (isSelected && pickSt) {
+    statusClass = pickSt === 'correct' ? 'pick-correct' : pickSt === 'wrong' ? 'pick-wrong' : '';
+  }
   return `
-    <div class="team-slot ${isSelected ? 'selected' : ''} ${locked ? 'locked' : ''}" ${clickHandler}>
+    <div class="team-slot ${isSelected ? 'selected' : ''} ${locked ? 'locked' : ''} ${statusClass}" ${clickHandler}>
       <span class="seed">${team.seed}</span>
       <span class="team-name">${team.name}</span>
-      ${isSelected ? '<span class="pick-dot"></span>' : ''}
+      ${isSelected && !statusClass ? '<span class="pick-dot"></span>' : ''}
+      ${statusClass === 'pick-correct' ? '<span class="pick-icon-correct">✓</span>' : ''}
+      ${statusClass === 'pick-wrong' ? '<span class="pick-icon-wrong">✗</span>' : ''}
     </div>
   `;
 }
 
-function renderFinalFour(picks, locked) {
+function renderFinalFour(picks, locked, pickStatus) {
   const e8East = picks["East-R3-M0"];
   const e8West = picks["West-R3-M0"];
   const e8South = picks["South-R3-M0"];
@@ -510,16 +572,16 @@ function renderFinalFour(picks, locked) {
           <div class="ff-label">Semifinal 1</div>
           <div class="ff-sub">East vs West</div>
           <div class="matchup-pair ff-matchup">
-            ${renderTeamSlot(parseTeamStr(e8East), sf1Key, sf1Pick, locked)}
-            ${renderTeamSlot(parseTeamStr(e8West), sf1Key, sf1Pick, locked)}
+            ${renderTeamSlot(parseTeamStr(e8East), sf1Key, sf1Pick, locked, pickStatus ? pickStatus[sf1Key] : null)}
+            ${renderTeamSlot(parseTeamStr(e8West), sf1Key, sf1Pick, locked, pickStatus ? pickStatus[sf1Key] : null)}
           </div>
         </div>
 
         <div class="ff-championship">
           <div class="ff-label">Championship</div>
           <div class="matchup-pair ff-matchup champ-matchup">
-            ${renderTeamSlot(sf1Winner, champKey, champPick, locked)}
-            ${renderTeamSlot(sf2Winner, champKey, champPick, locked)}
+            ${renderTeamSlot(sf1Winner, champKey, champPick, locked, pickStatus ? pickStatus[champKey] : null)}
+            ${renderTeamSlot(sf2Winner, champKey, champPick, locked, pickStatus ? pickStatus[champKey] : null)}
           </div>
           <div class="ff-champion-box ${champion ? '' : 'empty'}">
             <div class="ff-champion-label">🏆 Champion</div>
@@ -531,10 +593,115 @@ function renderFinalFour(picks, locked) {
           <div class="ff-label">Semifinal 2</div>
           <div class="ff-sub">South vs Midwest</div>
           <div class="matchup-pair ff-matchup">
-            ${renderTeamSlot(parseTeamStr(e8South), sf2Key, sf2Pick, locked)}
-            ${renderTeamSlot(parseTeamStr(e8Midwest), sf2Key, sf2Pick, locked)}
+            ${renderTeamSlot(parseTeamStr(e8South), sf2Key, sf2Pick, locked, pickStatus ? pickStatus[sf2Key] : null)}
+            ${renderTeamSlot(parseTeamStr(e8Midwest), sf2Key, sf2Pick, locked, pickStatus ? pickStatus[sf2Key] : null)}
           </div>
         </div>
+      </div>
+    </div>
+  `;
+}
+
+// ===== LEADERBOARD PAGE =====
+function renderLeaderboardPage() {
+  const entries = leaderboardData.leaderboard || [];
+  const champCombined = leaderboardData.championship_combined;
+  const gamesCompleted = leaderboardData.games_completed || 0;
+
+  return `
+    <h2 class="section-title">Leaderboard</h2>
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+      <span style="font-size:13px; color:var(--text-muted);">${gamesCompleted} games completed</span>
+      ${champCombined !== null ? `<span style="font-size:13px; color:var(--text-muted);">Championship total: ${champCombined}</span>` : ''}
+      <button class="btn-secondary" onclick="refreshLeaderboard()" style="margin-left:auto; font-size:12px; padding:6px 12px;">Refresh</button>
+    </div>
+    ${entries.length === 0
+      ? '<div class="empty-state">No submitted brackets yet, or tournament hasn\'t started.</div>'
+      : `
+      <div class="leaderboard-table-wrap">
+        <table class="leaderboard-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Name</th>
+              <th>Bracket</th>
+              <th>Score</th>
+              <th>TB</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${entries.map((e, i) => {
+              const isMe = e.user_id === currentUser.id;
+              return `
+                <tr class="${isMe ? 'lb-me' : ''}" onclick="viewBracket(${e.bracket_id})" style="cursor:pointer;">
+                  <td class="lb-rank">${e.rank}</td>
+                  <td class="lb-name">
+                    <div class="lb-avatar" style="width:28px;height:28px;border-radius:50%;background:var(--navy-100);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--navy-700);overflow:hidden;vertical-align:middle;margin-right:8px;">${e.avatar_data ? `<img src="${e.avatar_data}" style="width:100%;height:100%;object-fit:cover;">` : (e.display_name||'').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}</div>
+                    ${escapeHtml(e.display_name)}
+                  </td>
+                  <td>${escapeHtml(e.label)}</td>
+                  <td class="lb-score">${e.score}</td>
+                  <td class="lb-tb">${e.tiebreaker_score !== null ? e.tiebreaker_score : '-'}${e.tiebreaker_diff !== null ? ` <span style="font-size:11px;color:var(--text-faint);">(${e.tiebreaker_diff > 0 ? '+' : ''}${e.tiebreaker_diff})</span>` : ''}</td>
+                </tr>
+              `;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>
+    `}
+  `;
+}
+
+async function refreshLeaderboard() {
+  try {
+    await loadTournamentData();
+    render();
+    showToast("Leaderboard refreshed", "success");
+  } catch (e) {
+    showToast("Failed to refresh", "error");
+  }
+}
+
+// ===== LIVE SCORES =====
+function renderLiveScores() {
+  const games = liveSchedule.games || [];
+  if (games.length === 0) return '';
+
+  const inProgress = games.filter(g => g.game_state === 'in');
+  const upcoming = games.filter(g => g.game_state === 'pre');
+  const final_ = games.filter(g => g.game_state === 'final');
+  const displayGames = [...inProgress, ...upcoming, ...final_].slice(0, 8);
+
+  if (displayGames.length === 0) return '';
+
+  return `
+    <div class="live-scores-section">
+      <h3 class="section-title" style="display:flex;align-items:center;gap:8px;">
+        Live Scores
+        ${inProgress.length > 0 ? '<span class="live-dot"></span>' : ''}
+      </h3>
+      <div class="live-scores-grid">
+        ${displayGames.map(g => {
+          const stateClass = g.game_state === 'in' ? 'live-game-active' : g.game_state === 'final' ? 'live-game-final' : 'live-game-pre';
+          const stateLabel = g.game_state === 'in' ? 'LIVE' : g.game_state === 'final' ? 'FINAL' : g.round_name || 'Upcoming';
+          return `
+            <div class="live-game-card ${stateClass}">
+              <div class="live-game-status">${stateLabel}</div>
+              <div class="live-game-teams">
+                <div class="live-team ${g.game_state === 'final' && g.winner_name === g.team1_name ? 'live-winner' : ''}">
+                  <span class="live-seed">${g.team1_seed || ''}</span>
+                  <span class="live-name">${g.team1_name}</span>
+                  <span class="live-score-num">${g.game_state !== 'pre' ? g.team1_score : ''}</span>
+                </div>
+                <div class="live-team ${g.game_state === 'final' && g.winner_name === g.team2_name ? 'live-winner' : ''}">
+                  <span class="live-seed">${g.team2_seed || ''}</span>
+                  <span class="live-name">${g.team2_name}</span>
+                  <span class="live-score-num">${g.game_state !== 'pre' ? g.team2_score : ''}</span>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join("")}
       </div>
     </div>
   `;
@@ -730,7 +897,14 @@ function renderAdminPage() {
 
   return `
     <h2 class="section-title">Admin Panel</h2>
-    
+
+    <div class="admin-section">
+      <h3>Tournament</h3>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Fetch latest game results from ESPN and update bracket scores.</p>
+      <button class="btn-primary orange" style="width:auto;padding:10px 20px;font-size:13px;" onclick="refreshTournamentResults()">Refresh Results from ESPN</button>
+      <span id="refresh-status" style="font-size:12px;color:var(--text-muted);margin-left:12px;"></span>
+    </div>
+
     <div class="admin-section">
       <h3>Add Member</h3>
       <div class="form-row">
@@ -827,6 +1001,12 @@ function navigate(view) {
   currentView = view;
   render();
   window.scrollTo(0, 0);
+  if (view === 'home') {
+    loadLiveSchedule().then(() => render());
+  }
+  if (view === 'leaderboard') {
+    loadTournamentData().then(() => render());
+  }
 }
 
 function viewProfile(userId) {
@@ -846,12 +1026,14 @@ function openBracket(bracketId) {
   if (!bracket) return;
   currentBracketId = bracketId;
   currentPicks = bracket.submitted ? {} : { ...(bracket.picks || {}) };
+  currentTiebreaker = bracket.tiebreaker_score || null;
   render();
 }
 
 function closeBracketEditor() {
   currentBracketId = null;
   currentPicks = {};
+  currentTiebreaker = null;
   render();
 }
 
@@ -949,8 +1131,11 @@ function cascadeClear(matchKey, clearedTeam) {
 
 async function saveDraft() {
   if (!currentBracketId) return;
+  // Read tiebreaker from input if present
+  const tbInput = document.getElementById("tiebreaker-input");
+  if (tbInput) currentTiebreaker = tbInput.value ? parseInt(tbInput.value) : null;
   try {
-    await apiPut(`/api/brackets/${currentBracketId}/picks`, { picks: currentPicks });
+    await apiPut(`/api/brackets/${currentBracketId}/picks`, { picks: currentPicks, tiebreaker_score: currentTiebreaker });
     showToast("Draft saved", "success");
     await loadAllData();
   } catch (err) {
@@ -966,6 +1151,10 @@ function confirmSubmit() {
     <div class="modal-card">
       <h3>Submit Bracket?</h3>
       <p>You have ${pickCount} picks. Once submitted, your bracket is locked — no changes allowed. Entry fee: <strong>$${config.entry_fee}</strong></p>
+      <div class="venmo-reminder">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="flex-shrink:0"><path d="M19.5 3.6c.6 1 .9 2 .9 3.3 0 4.1-3.5 9.4-6.3 13.1H8.4L6 3.9l5.1-.5 1.2 9.6c1.1-1.8 2.5-4.6 2.5-6.5 0-1.2-.2-2-.5-2.7L19.5 3.6z" fill="#3D95CE"/></svg>
+        <span>Send $${config.entry_fee} via Venmo to <a href="https://venmo.com/u/Paul-Cummins-5" target="_blank" rel="noopener" style="color:#3D95CE;font-weight:600;">@Paul-Cummins-5</a></span>
+      </div>
       <div class="modal-buttons">
         <button class="btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
         <button class="btn-primary orange" style="width:auto;padding:10px 24px;" onclick="submitBracket(); this.closest('.modal-overlay').remove();">Submit & Lock</button>
@@ -977,8 +1166,10 @@ function confirmSubmit() {
 
 async function submitBracket() {
   if (!currentBracketId) return;
+  const tbInput = document.getElementById("tiebreaker-input");
+  if (tbInput) currentTiebreaker = tbInput.value ? parseInt(tbInput.value) : null;
   try {
-    await apiPost(`/api/brackets/${currentBracketId}/submit`, { picks: currentPicks });
+    await apiPost(`/api/brackets/${currentBracketId}/submit`, { picks: currentPicks, tiebreaker_score: currentTiebreaker });
     showToast("Bracket submitted and locked!", "success");
     await loadAllData();
     render();
@@ -1088,6 +1279,21 @@ async function removeMember(userId) {
   }
 }
 
+async function refreshTournamentResults() {
+  const statusEl = document.getElementById("refresh-status");
+  if (statusEl) statusEl.textContent = "Refreshing...";
+  try {
+    const res = await apiPost("/api/admin/tournament/refresh", {});
+    showToast(`Tournament refreshed: ${res.games_upserted} games updated`, "success");
+    if (statusEl) statusEl.textContent = `${res.games_upserted} games updated`;
+    await loadTournamentData();
+    render();
+  } catch (err) {
+    showToast(err.message, "error");
+    if (statusEl) statusEl.textContent = "Error: " + err.message;
+  }
+}
+
 let avatarUploadUserId = null;
 function triggerAvatarUpload(userId) {
   avatarUploadUserId = userId;
@@ -1125,6 +1331,29 @@ async function loadAllData() {
   allBrackets = brackets;
   betData = betsRes;
   config = cfg;
+  // Load tournament data in background (non-blocking)
+  loadTournamentData();
+}
+
+async function loadTournamentData() {
+  try {
+    const [results, lb] = await Promise.all([
+      apiGet("/api/tournament/results"),
+      apiGet("/api/leaderboard"),
+    ]);
+    tournamentResults = results;
+    leaderboardData = lb;
+  } catch (e) {
+    // Tournament endpoints may not have data yet, ignore
+  }
+}
+
+async function loadLiveSchedule() {
+  try {
+    liveSchedule = await apiGet("/api/tournament/schedule");
+  } catch (e) {
+    liveSchedule = { games: [] };
+  }
 }
 
 async function loadBets() {
@@ -1162,6 +1391,10 @@ async function init() {
     config = await apiGet("/api/config");
   } catch (e) {}
   render();
+  // Preload live schedule in background
+  loadLiveSchedule().then(() => {
+    if (currentUser && currentView === 'home') render();
+  });
 }
 
 init();

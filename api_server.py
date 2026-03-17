@@ -10,6 +10,8 @@ import secrets
 import logging
 import traceback
 from contextlib import asynccontextmanager
+from urllib.request import urlopen, Request as UrlRequest
+from urllib.error import URLError
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -118,6 +120,30 @@ def init_db(conn):
             created_at DOUBLE PRECISION NOT NULL
         );
     """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS tournament_results (
+            game_key TEXT PRIMARY KEY,
+            espn_game_id TEXT,
+            round INTEGER,
+            round_name TEXT,
+            region TEXT,
+            team1_name TEXT,
+            team1_seed INTEGER,
+            team1_score INTEGER,
+            team2_name TEXT,
+            team2_seed INTEGER,
+            team2_score INTEGER,
+            winner_name TEXT,
+            winner_seed INTEGER,
+            game_state TEXT DEFAULT 'pre',
+            game_date TEXT,
+            updated_at DOUBLE PRECISION
+        );
+    """)
+    # Add tiebreaker_score column if missing
+    cur.execute("""
+        ALTER TABLE brackets ADD COLUMN IF NOT EXISTS tiebreaker_score INTEGER DEFAULT NULL
+    """)
     conn.commit()
     cur.close()
     logger.info("DB tables initialized")
@@ -194,9 +220,11 @@ class LoginRequest(BaseModel):
 
 class SavePicksRequest(BaseModel):
     picks: dict
-    
+    tiebreaker_score: Optional[int] = None
+
 class SubmitBracketRequest(BaseModel):
     picks: dict
+    tiebreaker_score: Optional[int] = None
 
 class CreateBracketRequest(BaseModel):
     user_id: int
@@ -323,7 +351,7 @@ async def upload_avatar(user_id: int, file: UploadFile = File(...)):
 def list_brackets():
     cur = get_cursor()
     cur.execute("""
-        SELECT b.id, b.user_id, b.label, b.picks, b.submitted, b.submitted_at, u.display_name, u.avatar_data
+        SELECT b.id, b.user_id, b.label, b.picks, b.submitted, b.submitted_at, b.tiebreaker_score, u.display_name, u.avatar_data
         FROM brackets b JOIN users u ON b.user_id = u.id
         ORDER BY u.display_name, b.label
     """)
@@ -381,8 +409,8 @@ def save_picks(bracket_id: int, req: SavePicksRequest):
         cur.close()
         raise HTTPException(status_code=400, detail="Bracket already submitted and locked")
     now = time.time()
-    cur.execute("UPDATE brackets SET picks = %s, updated_at = %s WHERE id = %s",
-               (json.dumps(req.picks), now, bracket_id))
+    cur.execute("UPDATE brackets SET picks = %s, tiebreaker_score = %s, updated_at = %s WHERE id = %s",
+               (json.dumps(req.picks), req.tiebreaker_score, now, bracket_id))
     db.commit()
     cur.close()
     return {"ok": True}
@@ -399,8 +427,8 @@ def submit_bracket(bracket_id: int, req: SubmitBracketRequest):
         cur.close()
         raise HTTPException(status_code=400, detail="Bracket already submitted")
     now = time.time()
-    cur.execute("UPDATE brackets SET picks = %s, submitted = 1, submitted_at = %s, updated_at = %s WHERE id = %s",
-               (json.dumps(req.picks), now, now, bracket_id))
+    cur.execute("UPDATE brackets SET picks = %s, tiebreaker_score = %s, submitted = 1, submitted_at = %s, updated_at = %s WHERE id = %s",
+               (json.dumps(req.picks), req.tiebreaker_score, now, now, bracket_id))
     db.commit()
     cur.close()
     return {"ok": True, "submitted_at": now}
@@ -570,6 +598,380 @@ def update_setting(req: UpdateSettingRequest):
     db.commit()
     cur.close()
     return {"ok": True}
+
+# ---- Tournament / ESPN ----
+ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard"
+TOURNAMENT_DATES = [
+    "20260319", "20260320",  # R1
+    "20260321", "20260322",  # R2
+    "20260327", "20260328",  # Sweet 16
+    "20260329", "20260330",  # Elite 8
+    "20260404",              # Final Four
+    "20260406",              # Championship
+]
+
+ROUND_POINTS = {1: 10, 2: 20, 3: 40, 4: 80, 5: 160, 6: 320}
+
+ROUND_NAME_MAP = {
+    "1st Round": 1,
+    "2nd Round": 2,
+    "Sweet 16": 3,
+    "Elite Eight": 4,
+    "Final Four": 5,
+    "National Championship": 6,
+}
+
+# Simple in-memory cache for schedule endpoint
+_schedule_cache = {"data": None, "ts": 0}
+
+def fetch_espn_scoreboard(date_str):
+    """Fetch ESPN scoreboard for a given date string YYYYMMDD."""
+    url = f"{ESPN_BASE}?dates={date_str}&groups=100&limit=50"
+    try:
+        req = UrlRequest(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read().decode())
+    except Exception as e:
+        logger.error(f"ESPN fetch error for {date_str}: {e}")
+        return None
+
+def parse_espn_games(data):
+    """Parse ESPN scoreboard JSON into tournament game records."""
+    if not data or "events" not in data:
+        return []
+    games = []
+    for event in data["events"]:
+        # Check if it's an NCAA tournament game
+        notes = ""
+        competitions = event.get("competitions", [])
+        if not competitions:
+            continue
+        comp = competitions[0]
+        for note in comp.get("notes", []):
+            notes += note.get("headline", "") + " "
+        if "NCAA" not in notes and "NCAA" not in event.get("name", ""):
+            continue
+
+        # Determine round
+        round_num = 0
+        round_name = ""
+        for rn, rnum in ROUND_NAME_MAP.items():
+            if rn.lower() in notes.lower():
+                round_num = rnum
+                round_name = rn
+                break
+
+        if round_num == 0:
+            continue
+
+        # Parse region from notes
+        region = ""
+        for reg in ["East", "West", "South", "Midwest"]:
+            if reg.lower() in notes.lower():
+                region = reg
+                break
+
+        # Parse competitors
+        competitors = comp.get("competitors", [])
+        if len(competitors) < 2:
+            continue
+
+        def parse_comp(c):
+            team = c.get("team", {})
+            name = team.get("shortDisplayName", team.get("displayName", "Unknown"))
+            seed = 0
+            if "curatedRank" in c and "current" in c["curatedRank"]:
+                seed = c["curatedRank"]["current"]
+                if seed == 99:
+                    seed = 0
+            score = int(c.get("score", 0) or 0)
+            return name, seed, score
+
+        name1, seed1, score1 = parse_comp(competitors[0])
+        name2, seed2, score2 = parse_comp(competitors[1])
+
+        status = comp.get("status", {}).get("type", {})
+        state_desc = status.get("description", "Scheduled")
+        completed = status.get("completed", False)
+        game_state = "final" if completed else ("in" if state_desc == "In Progress" else "pre")
+
+        winner_name = ""
+        winner_seed = 0
+        if completed:
+            if score1 > score2:
+                winner_name, winner_seed = name1, seed1
+            elif score2 > score1:
+                winner_name, winner_seed = name2, seed2
+
+        espn_id = str(event.get("id", ""))
+        game_date = comp.get("date", "")[:10]
+
+        game_key = f"espn_{espn_id}"
+
+        games.append({
+            "game_key": game_key,
+            "espn_game_id": espn_id,
+            "round": round_num,
+            "round_name": round_name,
+            "region": region,
+            "team1_name": name1,
+            "team1_seed": seed1,
+            "team1_score": score1,
+            "team2_name": name2,
+            "team2_seed": seed2,
+            "team2_score": score2,
+            "winner_name": winner_name,
+            "winner_seed": winner_seed,
+            "game_state": game_state,
+            "game_date": game_date,
+        })
+    return games
+
+
+@app.get("/api/tournament/results")
+def get_tournament_results():
+    try:
+        cur = get_cursor()
+        cur.execute("SELECT * FROM tournament_results ORDER BY round, region, game_key")
+        rows = fetchall_dict(cur)
+        cur.close()
+        return {"results": rows}
+    except Exception as e:
+        logger.error(f"TOURNAMENT_RESULTS ERROR: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/admin/tournament/refresh")
+def refresh_tournament():
+    """Fetch latest results from ESPN for all tournament dates and upsert into DB."""
+    try:
+        all_games = []
+        for date_str in TOURNAMENT_DATES:
+            data = fetch_espn_scoreboard(date_str)
+            if data:
+                games = parse_espn_games(data)
+                all_games.extend(games)
+
+        cur = get_cursor()
+        now = time.time()
+        upserted = 0
+        for g in all_games:
+            cur.execute("""
+                INSERT INTO tournament_results
+                    (game_key, espn_game_id, round, round_name, region,
+                     team1_name, team1_seed, team1_score,
+                     team2_name, team2_seed, team2_score,
+                     winner_name, winner_seed, game_state, game_date, updated_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (game_key) DO UPDATE SET
+                    team1_score = EXCLUDED.team1_score,
+                    team2_score = EXCLUDED.team2_score,
+                    winner_name = EXCLUDED.winner_name,
+                    winner_seed = EXCLUDED.winner_seed,
+                    game_state = EXCLUDED.game_state,
+                    updated_at = EXCLUDED.updated_at
+            """, (
+                g["game_key"], g["espn_game_id"], g["round"], g["round_name"], g["region"],
+                g["team1_name"], g["team1_seed"], g["team1_score"],
+                g["team2_name"], g["team2_seed"], g["team2_score"],
+                g["winner_name"], g["winner_seed"], g["game_state"], g["game_date"], now,
+            ))
+            upserted += 1
+        db.commit()
+        cur.close()
+        logger.info(f"Tournament refresh: {upserted} games upserted")
+        return {"ok": True, "games_upserted": upserted}
+    except Exception as e:
+        logger.error(f"TOURNAMENT_REFRESH ERROR: {e}")
+        logger.error(traceback.format_exc())
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/tournament/schedule")
+def get_tournament_schedule():
+    """Fetch today's and upcoming games from ESPN (cached 60s)."""
+    global _schedule_cache
+    now = time.time()
+    if _schedule_cache["data"] is not None and now - _schedule_cache["ts"] < 60:
+        return _schedule_cache["data"]
+
+    try:
+        import datetime
+        today = datetime.date.today()
+        dates_to_check = []
+        for ds in TOURNAMENT_DATES:
+            d = datetime.date(int(ds[:4]), int(ds[4:6]), int(ds[6:8]))
+            if d >= today:
+                dates_to_check.append(ds)
+            elif d == today - datetime.timedelta(days=1):
+                dates_to_check.append(ds)
+
+        # Also always include today
+        today_str = today.strftime("%Y%m%d")
+        if today_str not in dates_to_check:
+            dates_to_check.insert(0, today_str)
+
+        all_games = []
+        for ds in dates_to_check[:3]:  # Limit to 3 dates max
+            data = fetch_espn_scoreboard(ds)
+            if data:
+                games = parse_espn_games(data)
+                all_games.extend(games)
+
+        result = {"games": all_games, "fetched_at": now}
+        _schedule_cache = {"data": result, "ts": now}
+        return result
+    except Exception as e:
+        logger.error(f"SCHEDULE ERROR: {e}")
+        return {"games": [], "fetched_at": now, "error": str(e)}
+
+
+def score_bracket(picks, all_results):
+    """Score a bracket's picks against tournament results.
+
+    picks: dict of pick keys to team strings (e.g. "East-R0-M0" -> "1 Duke")
+    all_results: list of all finished tournament result rows
+
+    Returns dict with total score and per-round breakdown.
+    """
+    import re
+    bracket_round_to_scoring = {0: 1, 1: 2, 2: 3, 3: 4}
+
+    total = 0
+    round_scores = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0}
+    correct_picks = []
+    wrong_picks = []
+    pending_picks = []
+
+    # Precompute lookups from results
+    # winners_by_round[round_num] = set of winner names
+    winners_by_round = {}
+    # losers_by_round[round_num] = set of team names that played but lost
+    losers_by_round = {}
+    for r in all_results:
+        rn = r["round"]
+        if rn not in winners_by_round:
+            winners_by_round[rn] = set()
+            losers_by_round[rn] = set()
+        if r["winner_name"]:
+            winners_by_round[rn].add(r["winner_name"])
+            # The loser is whichever team is not the winner
+            if r["team1_name"] != r["winner_name"]:
+                losers_by_round[rn].add(r["team1_name"])
+            if r["team2_name"] != r["winner_name"]:
+                losers_by_round[rn].add(r["team2_name"])
+
+    for key, pick_str in picks.items():
+        if not pick_str:
+            continue
+        m = re.match(r'^(\d+)\s+(.+)$', pick_str)
+        picked_name = m.group(2) if m else pick_str
+
+        # Determine scoring round
+        scoring_round = 0
+        if key.startswith("FF-CHAMP"):
+            scoring_round = 6
+        elif key.startswith("FF-SF"):
+            scoring_round = 5
+        else:
+            parts = re.match(r'^(.+)-R(\d+)-M(\d+)$', key)
+            if parts:
+                r_idx = int(parts.group(2))
+                scoring_round = bracket_round_to_scoring.get(r_idx, 0)
+
+        if scoring_round == 0:
+            continue
+
+        pts = ROUND_POINTS.get(scoring_round, 0)
+        round_winners = winners_by_round.get(scoring_round, set())
+        round_losers = losers_by_round.get(scoring_round, set())
+
+        if picked_name in round_winners:
+            total += pts
+            round_scores[scoring_round] += pts
+            correct_picks.append(key)
+        elif picked_name in round_losers:
+            wrong_picks.append(key)
+        else:
+            pending_picks.append(key)
+
+    return {
+        "total": total,
+        "round_scores": round_scores,
+        "correct_picks": correct_picks,
+        "wrong_picks": wrong_picks,
+        "pending_picks": pending_picks,
+    }
+
+
+@app.get("/api/leaderboard")
+def get_leaderboard():
+    """Score all submitted brackets and return ranked leaderboard."""
+    try:
+        cur = get_cursor()
+        cur.execute("""
+            SELECT b.id, b.user_id, b.label, b.picks, b.tiebreaker_score, u.display_name, u.avatar_data
+            FROM brackets b JOIN users u ON b.user_id = u.id
+            WHERE b.submitted = 1
+            ORDER BY u.display_name, b.label
+        """)
+        brackets = fetchall_dict(cur)
+
+        # Get all tournament results
+        cur.execute("SELECT * FROM tournament_results WHERE game_state = 'final'")
+        results = fetchall_dict(cur)
+        cur.close()
+
+        # Get championship combined score for tiebreaker
+        champ_combined = None
+        for r in results:
+            if r["round"] == 6 and r["game_state"] == "final":
+                champ_combined = (r["team1_score"] or 0) + (r["team2_score"] or 0)
+                break
+
+        entries = []
+        for b in brackets:
+            picks = json.loads(b["picks"]) if b["picks"] else {}
+            scored = score_bracket(picks, results)
+            tb = b["tiebreaker_score"]
+            tb_diff = abs(tb - champ_combined) if (tb is not None and champ_combined is not None) else None
+            entries.append({
+                "bracket_id": b["id"],
+                "user_id": b["user_id"],
+                "display_name": b["display_name"],
+                "avatar_data": b["avatar_data"],
+                "label": b["label"],
+                "score": scored["total"],
+                "round_scores": scored["round_scores"],
+                "tiebreaker_score": tb,
+                "tiebreaker_diff": tb_diff,
+                "correct_picks": scored["correct_picks"],
+                "wrong_picks": scored["wrong_picks"],
+                "pending_picks": scored["pending_picks"],
+            })
+
+        # Sort: highest score first; on tie, lowest tiebreaker_diff first
+        entries.sort(key=lambda e: (-e["score"], e["tiebreaker_diff"] if e["tiebreaker_diff"] is not None else 99999))
+
+        # Assign ranks
+        for i, e in enumerate(entries):
+            e["rank"] = i + 1
+
+        return {
+            "leaderboard": entries,
+            "championship_combined": champ_combined,
+            "games_completed": len(results),
+        }
+    except Exception as e:
+        logger.error(f"LEADERBOARD ERROR: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # ---- Serve static files ----
 STATIC_DIR = os.path.dirname(os.path.abspath(__file__))
