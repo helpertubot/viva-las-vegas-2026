@@ -187,20 +187,38 @@ def seed_admin(conn):
         logger.info("Admin user 'paul' already exists")
     cur.close()
 
+db = None
+
+def ensure_db():
+    """Connect to DB with retries. Called at startup and lazily if needed."""
+    global db
+    for attempt in range(5):
+        try:
+            if db is not None:
+                try:
+                    db.close()
+                except Exception:
+                    pass
+            db = get_db()
+            init_db(db)
+            seed_admin(db)
+            cur = db.cursor()
+            cur.execute("SELECT id, username FROM users")
+            test_rows = fetchall_dict(cur)
+            cur.close()
+            logger.info(f"DB setup complete. Users: {test_rows}")
+            return
+        except Exception as e:
+            logger.error(f"DB connect attempt {attempt+1}/5 failed: {e}")
+            if attempt < 4:
+                import time as _t
+                _t.sleep(3)
+    logger.error("All DB connection attempts failed")
+
 try:
-    db = get_db()
-    init_db(db)
-    seed_admin(db)
-    # Verify DB is working
-    cur = db.cursor()
-    cur.execute("SELECT id, username FROM users")
-    test_rows = fetchall_dict(cur)
-    cur.close()
-    logger.info(f"DB setup complete. Users: {test_rows}")
+    ensure_db()
 except Exception as e:
-    logger.error(f"DB SETUP ERROR: {e}")
-    logger.error(traceback.format_exc())
-    raise
+    logger.error(f"DB SETUP ERROR (non-fatal): {e}")
 
 # Bet reveal time: Saturday March 21, 2026 at 12:00 PM PDT (UTC-7) = 19:00 UTC
 BET_REVEAL_TIMESTAMP = 1774314000  # March 21 2026 12:00 PM PDT
@@ -208,6 +226,8 @@ BET_REVEAL_TIMESTAMP = 1774314000  # March 21 2026 12:00 PM PDT
 def get_cursor():
     """Get a cursor, reconnecting if needed."""
     global db
+    if db is None:
+        ensure_db()
     try:
         db.isolation_level
         cur = db.cursor()
