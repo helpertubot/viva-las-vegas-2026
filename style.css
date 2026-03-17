@@ -1724,39 +1724,57 @@ img { display: block; max-width: 100%; }
 .schedule-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0;
+}
+
+.schedule-day-block {
+  margin-bottom: 16px;
+}
+
+.schedule-day-block:last-child {
+  margin-bottom: 0;
 }
 
 .schedule-day {
   font-weight: 700;
   font-size: 14px;
   color: var(--orange-600);
-  margin-top: 12px;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   padding-bottom: 4px;
   border-bottom: 1px solid var(--navy-100);
-}
-
-.schedule-day:first-child {
-  margin-top: 0;
 }
 
 .schedule-item {
   font-size: 13px;
   color: var(--navy-700);
-  padding: 4px 0 4px 16px;
+  padding: 6px 0 6px 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
   position: relative;
 }
 
 .schedule-item::before {
   content: '';
   position: absolute;
-  left: 4px;
-  top: 11px;
+  left: 0;
+  top: 13px;
   width: 5px;
   height: 5px;
   border-radius: 50%;
   background: var(--navy-300);
+}
+
+.schedule-time {
+  font-weight: 600;
+  color: var(--navy-900);
+  min-width: 75px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.schedule-desc {
+  color: var(--navy-700);
 }
 
 .my-stay-form {

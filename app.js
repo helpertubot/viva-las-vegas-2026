@@ -1008,18 +1008,116 @@ function renderProfilePage() {
   `;
 }
 
+// ===== SCHEDULE HELPERS =====
+const SCHEDULE_DAYS = [
+  'Thursday, March 19',
+  'Friday, March 20',
+  'Saturday, March 21',
+  'Sunday, March 22'
+];
+
+function parseScheduleData(raw) {
+  // Try JSON first (new format)
+  if (raw && raw.trim().startsWith('[')) {
+    try {
+      const parsed = JSON.parse(raw);
+      // Ensure all 4 days exist
+      return SCHEDULE_DAYS.map(dayName => {
+        const found = parsed.find(d => d.day === dayName);
+        return found || { day: dayName, events: [] };
+      });
+    } catch (e) { /* fall through */ }
+  }
+  // Legacy plain text format — convert
+  if (raw && raw.trim()) {
+    const days = SCHEDULE_DAYS.map(d => ({ day: d, events: [] }));
+    let currentDay = 0;
+    for (const line of raw.split('\n')) {
+      const t = line.trim();
+      if (!t) continue;
+      if (t.startsWith('# ')) {
+        const header = t.slice(2).toLowerCase();
+        if (header.includes('thu')) currentDay = 0;
+        else if (header.includes('fri')) currentDay = 1;
+        else if (header.includes('sat')) currentDay = 2;
+        else if (header.includes('sun')) currentDay = 3;
+      } else {
+        days[currentDay].events.push({ time: '', desc: t });
+      }
+    }
+    return days;
+  }
+  return SCHEDULE_DAYS.map(d => ({ day: d, events: [] }));
+}
+
+// In-memory admin schedule state
+let adminSchedule = null;
+
+function getAdminSchedule() {
+  if (!adminSchedule) {
+    adminSchedule = parseScheduleData(config.group_schedule);
+  }
+  return adminSchedule;
+}
+
+function addScheduleEvent(dayIdx) {
+  captureScheduleInputs();
+  const sched = getAdminSchedule();
+  sched[dayIdx].events.push({ time: '', desc: '' });
+  render();
+}
+
+function removeScheduleEvent(dayIdx, evtIdx) {
+  captureScheduleInputs();
+  const sched = getAdminSchedule();
+  sched[dayIdx].events.splice(evtIdx, 1);
+  render();
+}
+
+function captureScheduleInputs() {
+  // Read current values from DOM inputs into adminSchedule
+  const sched = getAdminSchedule();
+  for (let di = 0; di < sched.length; di++) {
+    for (let ei = 0; ei < sched[di].events.length; ei++) {
+      const timeEl = document.getElementById(`sched-time-${di}-${ei}`);
+      const descEl = document.getElementById(`sched-desc-${di}-${ei}`);
+      if (timeEl) sched[di].events[ei].time = timeEl.value;
+      if (descEl) sched[di].events[ei].desc = descEl.value;
+    }
+  }
+}
+
+async function saveSchedule() {
+  captureScheduleInputs();
+  const sched = getAdminSchedule();
+  const json = JSON.stringify(sched);
+  try {
+    await apiPost('/api/admin/settings', { key: 'group_schedule', value: json });
+    config.group_schedule = json;
+    showToast('Schedule saved', 'success');
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
 // ===== TRIP PAGE =====
 function renderTripPage() {
   const myStay = allStays.find(s => s.user_id === currentUser.id);
-  const schedule = config.group_schedule || '';
-
-  // Parse schedule lines into HTML
-  const scheduleHtml = schedule ? schedule.split('\n').map(line => {
-    const trimmed = line.trim();
-    if (!trimmed) return '';
-    // Lines starting with # are headers
-    if (trimmed.startsWith('# ')) return `<div class="schedule-day">${escapeHtml(trimmed.slice(2))}</div>`;
-    return `<div class="schedule-item">${escapeHtml(trimmed)}</div>`;
+  const scheduleDays = parseScheduleData(config.group_schedule);
+  const hasSchedule = scheduleDays.some(d => d.events.length > 0);
+  const scheduleHtml = hasSchedule ? scheduleDays.map(d => {
+    if (d.events.length === 0) return '';
+    return `
+      <div class="schedule-day-block">
+        <div class="schedule-day">${escapeHtml(d.day)}</div>
+        ${d.events.map(e => `
+          <div class="schedule-item">
+            ${e.time ? `<span class="schedule-time">${escapeHtml(e.time)}</span>` : ''}
+            <span class="schedule-desc">${escapeHtml(e.desc)}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
   }).join('') : '<div class="empty-state">Schedule coming soon.</div>';
 
   return `
@@ -1177,16 +1275,7 @@ async function saveTripStay(userId) {
   }
 }
 
-async function saveGroupSchedule() {
-  const text = document.getElementById('admin-schedule').value;
-  try {
-    await apiPost('/api/admin/settings', { key: 'group_schedule', value: text });
-    config.group_schedule = text;
-    showToast('Schedule saved', 'success');
-  } catch (err) {
-    showToast(err.message, 'error');
-  }
-}
+// saveGroupSchedule removed — replaced by saveSchedule() in schedule helpers
 
 async function saveAdminStay(userId) {
   const hotel_name = document.getElementById(`admin-stay-hotel-${userId}`).value;
@@ -1273,9 +1362,21 @@ function renderAdminPage() {
 
     <div class="admin-section">
       <h3>Group Schedule</h3>
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:8px;">Edit the trip schedule. Use <code># Day Title</code> for day headers. One event per line.</p>
-      <textarea id="admin-schedule" rows="10" style="width:100%;font-size:13px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;resize:vertical;background:var(--surface);color:var(--navy-900);">${escapeHtml(config.group_schedule || '')}</textarea>
-      <button class="btn-primary" style="width:auto;padding:10px 20px;font-size:13px;margin-top:8px;" onclick="saveGroupSchedule()">Save Schedule</button>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Add events for each day of the trip. Include a time and description for each.</p>
+      ${getAdminSchedule().map((day, di) => `
+        <div style="background:var(--navy-50,#f6f8fb);border:1px solid var(--navy-100);border-radius:8px;padding:12px;margin-bottom:10px;">
+          <div style="font-weight:700;font-size:14px;color:var(--navy-900);margin-bottom:8px;">${escapeHtml(day.day)}</div>
+          ${day.events.map((evt, ei) => `
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+              <input type="text" id="sched-time-${di}-${ei}" placeholder="e.g. 3:00 PM" value="${escapeHtml(evt.time || '')}" style="width:120px;font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;">
+              <input type="text" id="sched-desc-${di}-${ei}" placeholder="Event description" value="${escapeHtml(evt.desc || '')}" style="flex:1;font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;">
+              <button onclick="removeScheduleEvent(${di},${ei})" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:16px;padding:4px;" title="Remove">&times;</button>
+            </div>
+          `).join('')}
+          <button onclick="addScheduleEvent(${di})" style="background:none;border:1px dashed var(--navy-300);color:var(--navy-500);padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer;margin-top:4px;">+ Add Event</button>
+        </div>
+      `).join('')}
+      <button class="btn-primary" style="width:auto;padding:10px 20px;font-size:13px;margin-top:8px;" onclick="saveSchedule()">Save Schedule</button>
     </div>
 
     <div class="admin-section">
