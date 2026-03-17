@@ -47,7 +47,7 @@ DATABASE_URL = os.environ.get(
 logger.info(f"Connecting to PostgreSQL...")
 
 def get_db():
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = psycopg2.connect(DATABASE_URL, connect_timeout=30)
     conn.autocommit = False
     return conn
 
@@ -148,9 +148,6 @@ def init_db(conn):
     cur.execute("""
         ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT DEFAULT ''
     """)
-    # Arrival/departure columns on stay_info
-    cur.execute("ALTER TABLE stay_info ADD COLUMN IF NOT EXISTS arrival TEXT DEFAULT ''")
-    cur.execute("ALTER TABLE stay_info ADD COLUMN IF NOT EXISTS departure TEXT DEFAULT ''")
     # Stay info table
     cur.execute("""
         CREATE TABLE IF NOT EXISTS stay_info (
@@ -164,6 +161,10 @@ def init_db(conn):
             UNIQUE(user_id)
         );
     """)
+    # Arrival/departure columns on stay_info
+    cur.execute("ALTER TABLE stay_info ADD COLUMN IF NOT EXISTS arrival TEXT DEFAULT ''")
+    cur.execute("ALTER TABLE stay_info ADD COLUMN IF NOT EXISTS departure TEXT DEFAULT ''")
+
     conn.commit()
     cur.close()
     logger.info("DB tables initialized")

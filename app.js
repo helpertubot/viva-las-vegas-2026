@@ -1993,10 +1993,13 @@ function escapeHtml(str) {
 
 // ===== INIT =====
 async function init() {
-  try {
-    config = await apiGet("/api/config");
-  } catch (e) {}
+  // Render login page immediately (don't wait for API on cold start)
   render();
+  // Load config in background — re-render once ready
+  apiGet("/api/config").then(cfg => {
+    config = cfg;
+    render();
+  }).catch(() => {});
   // Preload live schedule in background
   loadLiveSchedule().then(() => {
     if (currentUser && currentView === 'home') render();
