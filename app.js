@@ -695,11 +695,19 @@ function formatGameDay(dateStr) {
   } catch (e) { return dateStr; }
 }
 
+// Track which schedule days are expanded
+let expandedScheduleDays = {};
+
+function toggleScheduleDay(day) {
+  expandedScheduleDays[day] = !expandedScheduleDays[day];
+  render();
+}
+
 function renderLiveScores() {
   const games = liveSchedule.games || [];
   if (games.length === 0) return '';
 
-  // Sort: live first, then upcoming by time, then final
+  // Sort by datetime
   const sorted = [...games].sort((a, b) => {
     const order = { 'in': 0, 'pre': 1, 'final': 2 };
     if (order[a.game_state] !== order[b.game_state]) return order[a.game_state] - order[b.game_state];
@@ -714,6 +722,30 @@ function renderLiveScores() {
     grouped[day].push(g);
   }
 
+  // Determine today's date in user's timezone (PDT)
+  const now = new Date();
+  const todayStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+
+  // Find the "active" day: today if it has games, otherwise the first day with upcoming/live games, otherwise first day
+  const dayKeys = Object.keys(grouped);
+  let activeDay = dayKeys[0] || '';
+  if (grouped[todayStr]) {
+    activeDay = todayStr;
+  } else {
+    for (const dk of dayKeys) {
+      const hasLiveOrUpcoming = grouped[dk].some(g => g.game_state === 'in' || g.game_state === 'pre');
+      if (hasLiveOrUpcoming) { activeDay = dk; break; }
+    }
+  }
+
+  // Initialize expanded state: active day is expanded by default, others collapsed
+  // But once user has toggled, respect their choice
+  for (const dk of dayKeys) {
+    if (expandedScheduleDays[dk] === undefined) {
+      expandedScheduleDays[dk] = (dk === activeDay);
+    }
+  }
+
   const inProgress = games.filter(g => g.game_state === 'in');
 
   let html = `<div class="live-scores-section">
@@ -724,36 +756,50 @@ function renderLiveScores() {
 
   for (const [day, dayGames] of Object.entries(grouped)) {
     const roundLabel = dayGames[0]?.round_name || '';
-    html += `<div class="live-day-header">${formatGameDay(day)}${roundLabel ? ` &mdash; ${roundLabel}` : ''}</div>`;
-    html += `<div class="live-scores-grid">`;
-    for (const g of dayGames) {
-      const stateClass = g.game_state === 'in' ? 'live-game-active' : g.game_state === 'final' ? 'live-game-final' : 'live-game-pre';
-      let stateLabel = '';
-      if (g.game_state === 'in') {
-        stateLabel = g.status_detail || 'LIVE';
-      } else if (g.game_state === 'final') {
-        stateLabel = 'FINAL';
-      } else {
-        stateLabel = formatGameTime(g.game_datetime) || g.round_name || 'TBD';
+    const isExpanded = expandedScheduleDays[day];
+    const liveCount = dayGames.filter(g => g.game_state === 'in').length;
+    const gameCount = dayGames.length;
+    const isToday = day === todayStr;
+    const liveIndicator = liveCount > 0 ? ' <span class="live-dot" style="display:inline-block;"></span>' : '';
+    const countBadge = `<span style="font-size:11px;font-weight:500;color:var(--text-muted);margin-left:6px;">(${gameCount} games)</span>`;
+
+    html += `
+      <div class="live-day-header" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none;" onclick="toggleScheduleDay('${day}')">
+        <span>${formatGameDay(day)}${roundLabel ? ' &mdash; ' + roundLabel : ''}${liveIndicator}${isToday ? ' <span style="font-size:10px;background:var(--orange-500);color:#fff;padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:600;">TODAY</span>' : ''} ${countBadge}</span>
+        <span style="font-size:18px;color:var(--text-muted);transition:transform 0.2s;transform:rotate(${isExpanded ? '180' : '0'}deg);">&blacktriangledown;</span>
+      </div>`;
+
+    if (isExpanded) {
+      html += `<div class="live-scores-grid">`;
+      for (const g of dayGames) {
+        const stateClass = g.game_state === 'in' ? 'live-game-active' : g.game_state === 'final' ? 'live-game-final' : 'live-game-pre';
+        let stateLabel = '';
+        if (g.game_state === 'in') {
+          stateLabel = g.status_detail || 'LIVE';
+        } else if (g.game_state === 'final') {
+          stateLabel = 'FINAL';
+        } else {
+          stateLabel = formatGameTime(g.game_datetime) || g.round_name || 'TBD';
+        }
+        html += `
+          <div class="live-game-card ${stateClass}">
+            <div class="live-game-status">${stateLabel}</div>
+            <div class="live-game-teams">
+              <div class="live-team ${g.game_state === 'final' && g.winner_name === g.team1_name ? 'live-winner' : ''}">
+                <span class="live-seed">${g.team1_seed || ''}</span>
+                <span class="live-name">${g.team1_name}</span>
+                <span class="live-score-num">${g.game_state !== 'pre' ? g.team1_score : ''}</span>
+              </div>
+              <div class="live-team ${g.game_state === 'final' && g.winner_name === g.team2_name ? 'live-winner' : ''}">
+                <span class="live-seed">${g.team2_seed || ''}</span>
+                <span class="live-name">${g.team2_name}</span>
+                <span class="live-score-num">${g.game_state !== 'pre' ? g.team2_score : ''}</span>
+              </div>
+            </div>
+          </div>`;
       }
-      html += `
-        <div class="live-game-card ${stateClass}">
-          <div class="live-game-status">${stateLabel}</div>
-          <div class="live-game-teams">
-            <div class="live-team ${g.game_state === 'final' && g.winner_name === g.team1_name ? 'live-winner' : ''}">
-              <span class="live-seed">${g.team1_seed || ''}</span>
-              <span class="live-name">${g.team1_name}</span>
-              <span class="live-score-num">${g.game_state !== 'pre' ? g.team1_score : ''}</span>
-            </div>
-            <div class="live-team ${g.game_state === 'final' && g.winner_name === g.team2_name ? 'live-winner' : ''}">
-              <span class="live-seed">${g.team2_seed || ''}</span>
-              <span class="live-name">${g.team2_name}</span>
-              <span class="live-score-num">${g.game_state !== 'pre' ? g.team2_score : ''}</span>
-            </div>
-          </div>
-        </div>`;
+      html += `</div>`;
     }
-    html += `</div>`;
   }
 
   html += `</div>`;
@@ -986,40 +1032,83 @@ function renderTripPage() {
 
     <div class="trip-section">
       <h3>🏨 Where Is Everyone Staying?</h3>
-      <div class="my-stay-form">
-        <h4>My Stay</h4>
-        <div class="form-row">
-          <div class="form-field">
-            <label>Hotel / Property Name</label>
-            <input type="text" id="stay-hotel" placeholder="e.g. The Venetian" value="${myStay ? escapeHtml(myStay.hotel_name) : ''}">
+      ${currentUser.is_admin ? `
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">As admin, you can set up stays for everyone. They can update their own later.</p>
+        ${allUsers.map(u => {
+          const stay = allStays.find(s => s.user_id === u.id);
+          return `
+            <div class="my-stay-form" style="margin-bottom:16px;">
+              <h4 style="display:flex;align-items:center;gap:8px;"><div class="mini-avatar" style="width:24px;height:24px;font-size:10px;">${renderAvatar(u)}</div> ${escapeHtml(u.display_name)}'s Stay</h4>
+              <div class="form-row">
+                <div class="form-field">
+                  <label>Hotel / Property Name</label>
+                  <input type="text" id="trip-stay-hotel-${u.id}" placeholder="e.g. The Venetian" value="${stay ? escapeHtml(stay.hotel_name) : ''}">
+                </div>
+                <div class="form-field">
+                  <label>Location Link <span style="font-size:11px;color:var(--text-muted);">(Google Maps URL)</span></label>
+                  <input type="url" id="trip-stay-link-${u.id}" placeholder="https://maps.google.com/..." value="${stay ? escapeHtml(stay.hotel_link) : ''}">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-field">
+                  <label>Check-in</label>
+                  <input type="date" id="trip-stay-in-${u.id}" value="${stay ? stay.check_in : ''}">
+                </div>
+                <div class="form-field">
+                  <label>Check-out</label>
+                  <input type="date" id="trip-stay-out-${u.id}" value="${stay ? stay.check_out : ''}">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-field">
+                  <label>Arrival <span style="font-size:11px;color:var(--text-muted);">(flight/time info)</span></label>
+                  <input type="text" id="trip-stay-arrival-${u.id}" placeholder="e.g. Mar 18, 3:30 PM — SW 1234" value="${stay && stay.arrival ? escapeHtml(stay.arrival) : ''}">
+                </div>
+                <div class="form-field">
+                  <label>Departure <span style="font-size:11px;color:var(--text-muted);">(flight/time info)</span></label>
+                  <input type="text" id="trip-stay-departure-${u.id}" placeholder="e.g. Mar 22, 11:00 AM — SW 5678" value="${stay && stay.departure ? escapeHtml(stay.departure) : ''}">
+                </div>
+              </div>
+              <button class="btn-primary" style="width:auto;padding:10px 20px;font-size:13px;" onclick="saveTripStay(${u.id})">Save ${u.id === currentUser.id ? 'My' : escapeHtml(u.display_name) + "'s"} Stay</button>
+            </div>
+          `;
+        }).join('')}
+      ` : `
+        <div class="my-stay-form">
+          <h4>My Stay</h4>
+          <div class="form-row">
+            <div class="form-field">
+              <label>Hotel / Property Name</label>
+              <input type="text" id="trip-stay-hotel-${currentUser.id}" placeholder="e.g. The Venetian" value="${myStay ? escapeHtml(myStay.hotel_name) : ''}">
+            </div>
+            <div class="form-field">
+              <label>Location Link <span style="font-size:11px;color:var(--text-muted);">(Google Maps URL)</span></label>
+              <input type="url" id="trip-stay-link-${currentUser.id}" placeholder="https://maps.google.com/..." value="${myStay ? escapeHtml(myStay.hotel_link) : ''}">
+            </div>
           </div>
-          <div class="form-field">
-            <label>Location Link <span style="font-size:11px;color:var(--text-muted);">(Google Maps URL)</span></label>
-            <input type="url" id="stay-link" placeholder="https://maps.google.com/..." value="${myStay ? escapeHtml(myStay.hotel_link) : ''}">
+          <div class="form-row">
+            <div class="form-field">
+              <label>Check-in</label>
+              <input type="date" id="trip-stay-in-${currentUser.id}" value="${myStay ? myStay.check_in : ''}">
+            </div>
+            <div class="form-field">
+              <label>Check-out</label>
+              <input type="date" id="trip-stay-out-${currentUser.id}" value="${myStay ? myStay.check_out : ''}">
+            </div>
           </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label>Arrival <span style="font-size:11px;color:var(--text-muted);">(flight/time info)</span></label>
+              <input type="text" id="trip-stay-arrival-${currentUser.id}" placeholder="e.g. Mar 18, 3:30 PM — SW 1234" value="${myStay && myStay.arrival ? escapeHtml(myStay.arrival) : ''}">
+            </div>
+            <div class="form-field">
+              <label>Departure <span style="font-size:11px;color:var(--text-muted);">(flight/time info)</span></label>
+              <input type="text" id="trip-stay-departure-${currentUser.id}" placeholder="e.g. Mar 22, 11:00 AM — SW 5678" value="${myStay && myStay.departure ? escapeHtml(myStay.departure) : ''}">
+            </div>
+          </div>
+          <button class="btn-primary" style="width:auto;padding:10px 20px;font-size:13px;" onclick="saveTripStay(${currentUser.id})">Save My Stay</button>
         </div>
-        <div class="form-row">
-          <div class="form-field">
-            <label>Check-in</label>
-            <input type="date" id="stay-checkin" value="${myStay ? myStay.check_in : ''}">
-          </div>
-          <div class="form-field">
-            <label>Check-out</label>
-            <input type="date" id="stay-checkout" value="${myStay ? myStay.check_out : ''}">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-field">
-            <label>Arrival <span style="font-size:11px;color:var(--text-muted);">(flight/time info)</span></label>
-            <input type="text" id="stay-arrival" placeholder="e.g. Mar 18, 3:30 PM — SW 1234" value="${myStay && myStay.arrival ? escapeHtml(myStay.arrival) : ''}">
-          </div>
-          <div class="form-field">
-            <label>Departure <span style="font-size:11px;color:var(--text-muted);">(flight/time info)</span></label>
-            <input type="text" id="stay-departure" placeholder="e.g. Mar 22, 11:00 AM — SW 5678" value="${myStay && myStay.departure ? escapeHtml(myStay.departure) : ''}">
-          </div>
-        </div>
-        <button class="btn-primary" style="width:auto;padding:10px 20px;font-size:13px;" onclick="saveMyStay()">Save My Stay</button>
-      </div>
+      `}
 
       ${allStays.length > 0 ? `
         <div class="stays-grid">
@@ -1066,20 +1155,21 @@ function formatStayDate(dateStr) {
   return `${months[parseInt(m)-1]} ${parseInt(d)}`;
 }
 
-async function saveMyStay() {
-  const hotel_name = document.getElementById('stay-hotel').value;
-  const hotel_link = document.getElementById('stay-link').value;
-  const check_in = document.getElementById('stay-checkin').value;
-  const check_out = document.getElementById('stay-checkout').value;
-  const arrival = document.getElementById('stay-arrival').value;
-  const departure = document.getElementById('stay-departure').value;
+async function saveTripStay(userId) {
+  const hotel_name = document.getElementById(`trip-stay-hotel-${userId}`).value;
+  const hotel_link = document.getElementById(`trip-stay-link-${userId}`).value;
+  const check_in = document.getElementById(`trip-stay-in-${userId}`).value;
+  const check_out = document.getElementById(`trip-stay-out-${userId}`).value;
+  const arrival = document.getElementById(`trip-stay-arrival-${userId}`).value;
+  const departure = document.getElementById(`trip-stay-departure-${userId}`).value;
   if (!hotel_name && !check_in && !check_out && !arrival && !departure) {
     showToast('Fill in at least one field', 'error');
     return;
   }
   try {
-    await apiPut(`/api/stays/${currentUser.id}`, { hotel_name, hotel_link, check_in, check_out, arrival, departure });
-    showToast('Stay info saved', 'success');
+    await apiPut(`/api/stays/${userId}`, { hotel_name, hotel_link, check_in, check_out, arrival, departure });
+    const user = allUsers.find(u => u.id === userId);
+    showToast(`${user && user.id !== currentUser.id ? user.display_name + "'s" : 'Your'} stay saved`, 'success');
     await loadStays();
     render();
   } catch (err) {
