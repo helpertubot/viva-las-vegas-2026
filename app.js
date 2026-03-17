@@ -967,7 +967,11 @@ function renderCreateBetForm() {
 
 function renderBetCard(bet) {
   const canTake = !bet.taker_id && bet.creator_id !== currentUser.id && (!bet.about_user_id || bet.about_user_id !== currentUser.id);
-  const adminCanDelete = currentUser.is_admin;
+  const isCreator = bet.creator_id === currentUser.id;
+  const isAdmin = currentUser.is_admin;
+  // Creator can delete their own untaken bets; admin can delete any bet
+  const creatorCanDelete = isCreator && !bet.taker_id;
+  const adminCanDelete = isAdmin && !creatorCanDelete; // show admin delete only if not already showing creator delete
   return `
     <div class="bet-card">
       <div class="bet-header">
@@ -983,7 +987,8 @@ function renderBetCard(bet) {
             ? `<button class="btn-take-bet" onclick="takeBet(${bet.id})">Take this bet</button>`
             : `<span class="bet-status-open">Open</span>`
         }
-        ${adminCanDelete ? `<button class="btn-delete-bet" onclick="${bet.taker_id ? "if(confirm('This bet was taken. Delete anyway as admin?'))" : ''} deleteBet(${bet.id})" style="${bet.taker_id ? 'background:#dc2626;' : ''}">Delete</button>` : ''}
+        ${creatorCanDelete ? `<button class="btn-delete-bet" onclick="deleteBet(${bet.id})">Delete</button>` : ''}
+        ${adminCanDelete ? `<button class="btn-delete-bet" onclick="if(confirm('${bet.taker_id ? 'This bet was taken. ' : ''}Delete this bet as admin?')) deleteBet(${bet.id})" style="${bet.taker_id ? 'background:#dc2626;' : ''}">Delete</button>` : ''}
       </div>
     </div>
   `;
@@ -1838,6 +1843,9 @@ async function createBet() {
 }
 
 async function takeBet(betId) {
+  const bet = betData.bets.find(b => b.id === betId);
+  const desc = bet ? `"${bet.description}" for $${bet.amount}` : 'this bet';
+  if (!confirm(`Are you sure you want to take ${desc}? This cannot be undone.`)) return;
   try {
     await apiPost(`/api/bets/${betId}/take?viewer_id=${currentUser.id}`, {});
     showToast("You took the bet!", "success");
