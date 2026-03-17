@@ -181,9 +181,17 @@ function renderAvatar(user, sizeClass = "") {
 }
 
 // ===== RENDER ENGINE =====
+let sessionChecked = false;
 function render() {
   const app = document.getElementById("app");
   if (!currentUser) {
+    if (!sessionChecked && getSessionToken()) {
+      // Session token exists but hasn't been verified yet — show loading instead of login flash
+      app.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;min-height:60vh;">
+        <div style="text-align:center;color:var(--text-muted);font-size:14px;">Loading...</div>
+      </div>`;
+      return;
+    }
     app.innerHTML = renderLogin();
     return;
   }
@@ -2052,12 +2060,21 @@ function escapeHtml(str) {
 
 // ===== INIT =====
 async function init() {
-  // Render login page immediately (don't wait for API on cold start)
+  // Show loading spinner if we have a session token (avoids login flash)
   render();
   // Try restoring session from cookie
-  restoreSession().then(restored => {
-    if (restored) render();
-  }).catch(() => {});
+  try {
+    const restored = await restoreSession();
+    sessionChecked = true;
+    if (restored) {
+      render();
+    } else {
+      render(); // show login
+    }
+  } catch(e) {
+    sessionChecked = true;
+    render(); // show login
+  }
   // Load config in background — re-render once ready
   apiGet("/api/config").then(cfg => {
     config = cfg;
