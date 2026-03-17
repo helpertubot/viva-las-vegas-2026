@@ -172,6 +172,8 @@ def init_db(conn):
     # Closed bet columns
     cur.execute("ALTER TABLE bets ADD COLUMN IF NOT EXISTS closed BOOLEAN NOT NULL DEFAULT FALSE")
     cur.execute("ALTER TABLE bets ADD COLUMN IF NOT EXISTS closed_at DOUBLE PRECISION")
+    # Expiration for Puter bets
+    cur.execute("ALTER TABLE bets ADD COLUMN IF NOT EXISTS expires_at DOUBLE PRECISION")
 
     conn.commit()
     cur.close()
@@ -733,6 +735,16 @@ def list_bets(viewer_id: Optional[int] = None):
     revealed = now >= BET_REVEAL_TIMESTAMP
     
     cur = get_cursor()
+    # Auto-expire untaken Puter bets that have passed their expires_at
+    cur.execute(
+        "UPDATE bets SET closed = TRUE, closed_at = %s WHERE creator_id = %s AND taker_id IS NULL AND closed = FALSE AND expires_at IS NOT NULL AND expires_at < %s",
+        (now, PUTER_USER_ID, now)
+    )
+    expired_count = cur.rowcount
+    if expired_count > 0:
+        db.commit()
+        logger.info(f"Auto-expired {expired_count} untaken Puter bets")
+
     cur.execute("""
         SELECT b.*, 
             creator.display_name as creator_name,
@@ -993,6 +1005,14 @@ PUTER_INITIAL_BANKROLL = 500.0
 def list_puter_bets():
     """List all Puter bets and bankroll status."""
     cur = get_cursor()
+    # Auto-expire untaken Puter bets that have passed their expires_at
+    now = time.time()
+    cur.execute(
+        "UPDATE bets SET closed = TRUE, closed_at = %s WHERE creator_id = %s AND taker_id IS NULL AND closed = FALSE AND expires_at IS NOT NULL AND expires_at < %s",
+        (now, PUTER_USER_ID, now)
+    )
+    if cur.rowcount > 0:
+        db.commit()
     cur.execute("""
         SELECT b.*,
             taker.display_name as taker_name
@@ -1042,6 +1062,12 @@ def take_puter_bet(bet_id: int, viewer_id: int = 0):
         cur.close()
         raise HTTPException(status_code=400, detail="Bet is already closed")
     now = time.time()
+    # Check if bet has expired
+    if bet.get("expires_at") and now > bet["expires_at"]:
+        cur.execute("UPDATE bets SET closed = TRUE, closed_at = %s WHERE id = %s", (now, bet_id))
+        db.commit()
+        cur.close()
+        raise HTTPException(status_code=400, detail="This bet has expired")
     cur.execute("UPDATE bets SET taker_id = %s, taken_at = %s WHERE id = %s", (viewer_id, now, bet_id))
     db.commit()
     cur.close()
@@ -1108,6 +1134,7 @@ class CreatePuterBetRequest(BaseModel):
     amount: float
     about_user_id: Optional[int] = None
     bet_category: Optional[str] = 'verifiable'  # 'verifiable' or 'subjective'
+    expires_at: Optional[float] = None  # Unix timestamp when bet expires (auto-closes if untaken)
 
 @app.post("/api/puter/bets")
 def create_puter_bet(req: CreatePuterBetRequest, viewer_id: int = 0):
@@ -1140,14 +1167,16 @@ def create_puter_bet(req: CreatePuterBetRequest, viewer_id: int = 0):
     # Validate bet_category
     category = req.bet_category if req.bet_category in ('verifiable', 'subjective') else 'verifiable'
     now = time.time()
+    # Default expiration: 2 hours from now if not specified
+    expires_at = req.expires_at if req.expires_at else (now + 7200)
     cur.execute(
-        "INSERT INTO bets (creator_id, about_user_id, bet_type, description, amount, created_at, bet_category) VALUES (%s, %s, 'puter', %s, %s, %s, %s) RETURNING id",
-        (PUTER_USER_ID, req.about_user_id, req.description, req.amount, now, category)
+        "INSERT INTO bets (creator_id, about_user_id, bet_type, description, amount, created_at, bet_category, expires_at) VALUES (%s, %s, 'puter', %s, %s, %s, %s, %s) RETURNING id",
+        (PUTER_USER_ID, req.about_user_id, req.description, req.amount, now, category, expires_at)
     )
     bet_id = cur.fetchone()[0]
     db.commit()
     cur.close()
-    return {"id": bet_id, "bet_category": category}
+    return {"id": bet_id, "bet_category": category, "expires_at": expires_at}
 
 @app.get("/api/puter/payouts")
 def puter_payouts():

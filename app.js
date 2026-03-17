@@ -1324,6 +1324,17 @@ function renderPuterBetsSection() {
   `;
 }
 
+function formatTimeLeft(expiresAt) {
+  const now = Date.now() / 1000;
+  const diff = expiresAt - now;
+  if (diff <= 0) return null; // expired
+  const hours = Math.floor(diff / 3600);
+  const mins = Math.floor((diff % 3600) / 60);
+  if (hours > 0) return `${hours}h ${mins}m left`;
+  if (mins > 0) return `${mins}m left`;
+  return '<1m left';
+}
+
 function renderPuterBetCard(bet, myActiveWithPuter) {
   const isClosed = bet.closed;
   const isTaken = !!bet.taker_id;
@@ -1337,16 +1348,35 @@ function renderPuterBetCard(bet, myActiveWithPuter) {
     ? '<span style="font-size:10px;background:#92400e;color:#fbbf24;padding:2px 6px;border-radius:4px;margin-left:6px;">Prop</span>'
     : '<span style="font-size:10px;background:#1e3a5f;color:#60a5fa;padding:2px 6px;border-radius:4px;margin-left:6px;">Sports</span>';
 
+  // Expiration countdown for open untaken bets
+  let expiresHtml = '';
+  if (!isClosed && !isTaken && bet.expires_at) {
+    const timeLeft = formatTimeLeft(bet.expires_at);
+    if (timeLeft) {
+      const isUrgent = (bet.expires_at - Date.now() / 1000) < 1800; // <30 min
+      expiresHtml = `<span class="puter-bet-timer${isUrgent ? ' urgent' : ''}">⏱ ${timeLeft}</span>`;
+    } else {
+      expiresHtml = `<span class="puter-bet-timer expired">Expired</span>`;
+    }
+  }
+  // Show "Expired" label for closed untaken bets
+  const wasExpired = isClosed && !isTaken && bet.expires_at;
+
   return `
     <div class="bet-card puter-bet${isClosed ? ' bet-closed' : ''}${isMyBet && !isClosed ? ' puter-my-bet' : ''}">
       <div class="bet-header">
         <span class="bet-about">🤖 Puter bets${bet.about_user_id ? ` (about ${allUsers.find(u => u.id === bet.about_user_id)?.display_name || 'someone'})` : ''}:${categoryLabel}</span>
-        <span class="bet-amount">$${bet.amount}</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${expiresHtml}
+          <span class="bet-amount">$${bet.amount}</span>
+        </div>
       </div>
       <div class="bet-description">${escapeHtml(bet.description)}</div>
       <div class="bet-footer">
         ${isClosed
-          ? `<span class="bet-status-closed">Settled</span>${bet.taker_name ? ` — was taken by ${bet.taker_name}` : ''}`
+          ? wasExpired
+            ? `<span class="bet-status-expired">Expired — no takers</span>`
+            : `<span class="bet-status-closed">Settled</span>${bet.taker_name ? ` — was taken by ${bet.taker_name}` : ''}`
           : isTaken
             ? `<span class="bet-status-taken">✓ Taken by ${bet.taker_name}</span>`
             : canTake
