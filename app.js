@@ -1689,9 +1689,9 @@ function renderSettleUpButtons(bet, viewAs) {
   if (hasPendingProposal && !iProposed && (isCreator || isTaker)) {
     const proposerName = bet.settle_proposed_by === bet.creator_id ? bet.creator_name : bet.taker_name;
     const claimedWinner = bet.settle_winner === 'creator' ? bet.creator_name : bet.taker_name;
-    html += `<div style="margin-top:6px;padding:8px;background:rgba(251,191,36,0.1);border:1px solid #92400e;border-radius:6px;font-size:12px;">
-      <div style="color:#fbbf24;font-weight:600;margin-bottom:4px;">⚡ Settle-Up Pending</div>
-      <div style="color:#e2e8f0;">${proposerName} says <strong>${claimedWinner}</strong> won.</div>
+    html += `<div style="margin-top:6px;padding:8px;background:#fef3c7;border:1px solid #92400e;border-radius:6px;font-size:12px;">
+      <div style="color:#92400e;font-weight:600;margin-bottom:4px;">⚡ Settle-Up Pending</div>
+      <div style="color:#451a03;font-weight:500;">${proposerName} says <strong>${claimedWinner}</strong> won.</div>
       <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
         <button class="btn-close-bet" onclick="settleUp(${bet.id}, '${bet.settle_winner}')" style="background:#16a34a;color:#fff;font-size:11px;padding:4px 10px;">Agree</button>
         <button class="btn-close-bet" onclick="settleUp(${bet.id}, '${bet.settle_winner === 'creator' ? 'taker' : 'creator'}')" style="background:#dc2626;color:#fff;font-size:11px;padding:4px 10px;">Disagree — I won</button>
@@ -1756,7 +1756,7 @@ function renderBetCard(bet) {
         ${renderSettleUpButtons(bet, 'general')}
         ${creatorCanDelete ? `<button class="btn-delete-bet" onclick="deleteBet(${bet.id})">Delete</button>` : ''}
         ${adminCanDelete ? `<button class="btn-delete-bet" onclick="if(confirm('${bet.taker_id ? 'This bet was taken. ' : ''}Delete this bet as admin?')) deleteBet(${bet.id})" style="${bet.taker_id ? 'background:#dc2626;' : ''}">Delete</button>` : ''}
-        ${isAdmin && isClosed && bet.taker_id ? `<button class="btn-unsettle" onclick="unsettleBet(${bet.id})">Unsettle</button>` : ''}
+        ${isClosed && bet.taker_id && (isAdmin || isCreator || bet.taker_id === currentUser.id) ? `<button class="btn-unsettle" onclick="unsettleBet(${bet.id})">Unsettle</button>` : ''}
       </div>
     </div>
   `;
@@ -1783,7 +1783,7 @@ function renderMyBetCard(bet) {
         ${renderSettleUpButtons(bet, 'creator')}
         ${canDelete ? `<button class="btn-delete-bet" onclick="deleteBet(${bet.id})">Delete</button>` : ''}
         ${adminCanDelete ? `<button class="btn-delete-bet" onclick="if(confirm('This bet was taken. Delete anyway as admin?')) deleteBet(${bet.id})" style="background:#dc2626;">Admin Delete</button>` : ''}
-        ${currentUser.is_admin && isClosed && bet.taker_id ? `<button class="btn-unsettle" onclick="unsettleBet(${bet.id})">Unsettle</button>` : ''}
+        ${isClosed && bet.taker_id ? `<button class="btn-unsettle" onclick="unsettleBet(${bet.id})">Unsettle</button>` : ''}
       </div>
     </div>
   `;

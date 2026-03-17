@@ -973,15 +973,13 @@ def void_bet(bet_id: int, viewer_id: int = 0):
 
 @app.post("/api/bets/{bet_id}/unsettle")
 def unsettle_bet(bet_id: int, viewer_id: int = 0):
-    """Admin-only: reopen a settled bet so the outcome can be corrected."""
+    """Reopen a settled bet. Available to admin, creator, or taker."""
     if viewer_id == 0:
         raise HTTPException(status_code=400, detail="Must be logged in")
     cur = get_cursor()
     cur.execute("SELECT is_admin FROM users WHERE id = %s", (viewer_id,))
     viewer_row = fetchone_dict(cur)
-    if not (viewer_row and viewer_row.get("is_admin", False)):
-        cur.close()
-        raise HTTPException(status_code=403, detail="Only admin can unsettle a bet")
+    is_admin = viewer_row and viewer_row.get("is_admin", False)
     cur.execute("SELECT * FROM bets WHERE id = %s", (bet_id,))
     bet = fetchone_dict(cur)
     if not bet:
@@ -990,6 +988,11 @@ def unsettle_bet(bet_id: int, viewer_id: int = 0):
     if not bet["closed"]:
         cur.close()
         raise HTTPException(status_code=400, detail="Bet is not settled")
+    is_creator = viewer_id == bet["creator_id"]
+    is_taker = viewer_id == bet["taker_id"]
+    if not is_admin and not is_creator and not is_taker:
+        cur.close()
+        raise HTTPException(status_code=403, detail="Only admin, creator, or taker can unsettle")
     cur.execute("UPDATE bets SET closed = FALSE, closed_at = NULL, settle_winner = NULL, settle_proposed_by = NULL WHERE id = %s", (bet_id,))
     db.commit()
     cur.close()
