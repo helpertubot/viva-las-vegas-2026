@@ -1156,6 +1156,32 @@ function renderAdminPage() {
     </div>
 
     <div class="admin-section">
+      <h3>Manage Brackets (${allBrackets.length})</h3>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Reset a submitted bracket so the user can edit it, or delete it entirely.</p>
+      ${allBrackets.length === 0 ? '<p style="font-size:13px;color:var(--text-muted);">No brackets yet.</p>' : allBrackets.map(b => {
+        const owner = allUsers.find(u => u.id === b.user_id);
+        const ownerName = owner ? owner.display_name : 'Unknown';
+        const statusLabel = b.submitted ? '<span style="color:#16a34a;font-weight:600;font-size:11px;">SUBMITTED</span>' : '<span style="color:var(--orange-500);font-weight:600;font-size:11px;">DRAFT</span>';
+        const pickCount = b.pick_count || Object.keys(b.picks || {}).length;
+        return `
+          <div style="background:var(--navy-50,#f6f8fb);border:1px solid var(--navy-100);border-radius:8px;padding:12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div class="mini-avatar" style="width:24px;height:24px;font-size:10px;">${owner ? renderAvatar(owner) : '?'}</div>
+              <div>
+                <div style="font-weight:700;font-size:13px;color:var(--navy-900);">${escapeHtml(ownerName)} — ${escapeHtml(b.label)}</div>
+                <div style="font-size:11px;color:var(--text-muted);">${statusLabel} · ${pickCount} picks${b.tiebreaker_score ? ' · TB: ' + b.tiebreaker_score : ''}</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;">
+              ${b.submitted ? `<button class="btn-sm" style="background:var(--orange-500);color:#fff;border:none;padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;" onclick="adminResetBracket(${b.id}, '${escapeHtml(ownerName)}', '${escapeHtml(b.label)}')">Reset to Draft</button>` : ''}
+              <button class="btn-sm danger" style="padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;" onclick="adminDeleteBracket(${b.id}, '${escapeHtml(ownerName)}', '${escapeHtml(b.label)}')">Delete</button>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+
+    <div class="admin-section">
       <h3>Group Schedule</h3>
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:8px;">Edit the trip schedule. Use <code># Day Title</code> for day headers. One event per line.</p>
       <textarea id="admin-schedule" rows="10" style="width:100%;font-size:13px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;resize:vertical;background:var(--surface);color:var(--navy-900);">${escapeHtml(config.group_schedule || '')}</textarea>
@@ -1566,6 +1592,29 @@ async function deleteBet(betId) {
     render();
   } catch (err) {
     showToast(err.message, "error");
+  }
+}
+
+// Admin bracket actions
+async function adminResetBracket(bracketId, ownerName, label) {
+  if (!confirm(`Reset "${label}" by ${ownerName} back to draft? They will be able to edit their picks again.`)) return;
+  try {
+    await apiPost(`/api/admin/brackets/${bracketId}/reset?viewer_id=${currentUser.id}`, {});
+    await loadAllData();
+    render();
+  } catch (err) {
+    alert('Error resetting bracket: ' + err.message);
+  }
+}
+
+async function adminDeleteBracket(bracketId, ownerName, label) {
+  if (!confirm(`DELETE "${label}" by ${ownerName}? This cannot be undone.`)) return;
+  try {
+    await apiDelete(`/api/admin/brackets/${bracketId}?viewer_id=${currentUser.id}`);
+    await loadAllData();
+    render();
+  } catch (err) {
+    alert('Error deleting bracket: ' + err.message);
   }
 }
 

@@ -491,6 +491,47 @@ def delete_bracket(bracket_id: int, viewer_id: int = 0):
     cur.close()
     return {"deleted": bracket_id}
 
+# ---- Admin bracket management ----
+@app.post("/api/admin/brackets/{bracket_id}/reset")
+def admin_reset_bracket(bracket_id: int, viewer_id: int = 0):
+    """Admin resets a submitted bracket back to draft so user can edit it."""
+    cur = get_cursor()
+    # verify admin
+    cur.execute("SELECT is_admin FROM users WHERE id = %s", (viewer_id,))
+    admin_row = fetchone_dict(cur)
+    if not admin_row or not admin_row["is_admin"]:
+        cur.close()
+        raise HTTPException(status_code=403, detail="Admin only")
+    cur.execute("SELECT * FROM brackets WHERE id = %s", (bracket_id,))
+    bracket = fetchone_dict(cur)
+    if not bracket:
+        cur.close()
+        raise HTTPException(status_code=404, detail="Bracket not found")
+    cur.execute("UPDATE brackets SET submitted = 0, submitted_at = NULL, updated_at = %s WHERE id = %s",
+               (time.time(), bracket_id))
+    db.commit()
+    cur.close()
+    return {"reset": bracket_id}
+
+@app.delete("/api/admin/brackets/{bracket_id}")
+def admin_delete_bracket(bracket_id: int, viewer_id: int = 0):
+    """Admin can delete any bracket, even submitted ones."""
+    cur = get_cursor()
+    cur.execute("SELECT is_admin FROM users WHERE id = %s", (viewer_id,))
+    admin_row = fetchone_dict(cur)
+    if not admin_row or not admin_row["is_admin"]:
+        cur.close()
+        raise HTTPException(status_code=403, detail="Admin only")
+    cur.execute("SELECT * FROM brackets WHERE id = %s", (bracket_id,))
+    bracket = fetchone_dict(cur)
+    if not bracket:
+        cur.close()
+        raise HTTPException(status_code=404, detail="Bracket not found")
+    cur.execute("DELETE FROM brackets WHERE id = %s", (bracket_id,))
+    db.commit()
+    cur.close()
+    return {"deleted": bracket_id}
+
 # ---- Bets ----
 @app.get("/api/bets")
 def list_bets(viewer_id: Optional[int] = None):
