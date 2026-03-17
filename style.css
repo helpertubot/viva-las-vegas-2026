@@ -393,6 +393,7 @@ img { display: block; max-width: 100%; }
 .puter-bet .bet-amount { color: #fbbf24; }
 .puter-bet .bet-description { color: #e2e8f0; }
 .puter-bet .bet-footer { color: #94a3b8; }
+.puter-bet .bet-footer-actions { border-top-color: #334155; }
 .puter-bet .bet-status-open { color: #94a3b8; }
 .puter-bet .bet-status-taken { color: #4ade80; }
 .puter-bet .bet-status-closed { color: #e2e8f0; background: rgba(100,116,139,0.2); }
@@ -1426,11 +1427,25 @@ img { display: block; max-width: 100%; }
 }
 
 .bet-footer {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.bet-footer-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 12px;
-  color: var(--text-muted);
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bet-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
 }
 
 .bet-creator {

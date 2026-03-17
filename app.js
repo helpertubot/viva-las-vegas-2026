@@ -1734,6 +1734,19 @@ function renderBetCard(bet) {
   const isAdmin = currentUser.is_admin;
   const creatorCanDelete = !isClosed && isCreator && !bet.taker_id;
   const adminCanDelete = !isClosed && isAdmin && !creatorCanDelete;
+  const statusHtml = isClosed
+    ? renderBetSettledStatus(bet)
+    : bet.taker_id
+      ? `<span class="bet-status-taken">✓ Taken by ${bet.taker_name}</span>`
+      : canTake
+        ? `<button class="btn-take-bet" onclick="takeBet(${bet.id})">Take this bet</button>`
+        : `<span class="bet-status-open">Open</span>`;
+
+  const actionBtns = [];
+  if (creatorCanDelete) actionBtns.push(`<button class="btn-delete-bet" onclick="deleteBet(${bet.id})">Delete</button>`);
+  if (adminCanDelete) actionBtns.push(`<button class="btn-delete-bet" onclick="if(confirm('${bet.taker_id ? 'This bet was taken. ' : ''}Delete this bet as admin?')) deleteBet(${bet.id})" style="${bet.taker_id ? 'background:#dc2626;' : ''}">Delete</button>`);
+  if (isClosed && bet.taker_id && (isAdmin || isCreator || bet.taker_id === currentUser.id)) actionBtns.push(`<button class="btn-unsettle" onclick="unsettleBet(${bet.id})">Unsettle</button>`);
+
   return `
     <div class="bet-card${isClosed ? ' bet-closed' : ''}">
       <div class="bet-header">
@@ -1742,20 +1755,13 @@ function renderBetCard(bet) {
       </div>
       <div class="bet-description">${escapeHtml(bet.description)}</div>
       <div class="bet-footer">
-        <span class="bet-creator">Created by ${bet.creator_name}</span>
-        ${isClosed
-          ? renderBetSettledStatus(bet)
-          : bet.taker_id
-            ? `<span class="bet-status-taken">✓ Taken by ${bet.taker_name}</span>`
-            : canTake
-              ? `<button class="btn-take-bet" onclick="takeBet(${bet.id})">Take this bet</button>`
-              : `<span class="bet-status-open">Open</span>`
-        }
-        ${renderSettleUpButtons(bet, 'general')}
-        ${creatorCanDelete ? `<button class="btn-delete-bet" onclick="deleteBet(${bet.id})">Delete</button>` : ''}
-        ${adminCanDelete ? `<button class="btn-delete-bet" onclick="if(confirm('${bet.taker_id ? 'This bet was taken. ' : ''}Delete this bet as admin?')) deleteBet(${bet.id})" style="${bet.taker_id ? 'background:#dc2626;' : ''}">Delete</button>` : ''}
-        ${isClosed && bet.taker_id && (isAdmin || isCreator || bet.taker_id === currentUser.id) ? `<button class="btn-unsettle" onclick="unsettleBet(${bet.id})">Unsettle</button>` : ''}
+        <div class="bet-footer-row">
+          <span class="bet-creator">Created by ${bet.creator_name}</span>
+          ${statusHtml}
+        </div>
+        ${actionBtns.length > 0 ? `<div class="bet-footer-actions">${actionBtns.join('')}</div>` : ''}
       </div>
+      ${renderSettleUpButtons(bet, 'general')}
     </div>
   `;
 }
@@ -1764,6 +1770,18 @@ function renderMyBetCard(bet) {
   const isClosed = bet.closed;
   const canDelete = !isClosed && !bet.taker_id;
   const adminCanDelete = !isClosed && currentUser.is_admin && bet.taker_id;
+
+  const statusHtml = isClosed
+    ? renderBetSettledStatus(bet)
+    : bet.taker_id
+      ? `<span class="bet-status-taken">✓ Taken by ${bet.taker_name}</span>`
+      : `<span class="bet-status-open">Open — waiting for taker</span>`;
+
+  const actionBtns = [];
+  if (canDelete) actionBtns.push(`<button class="btn-delete-bet" onclick="deleteBet(${bet.id})">Delete</button>`);
+  if (adminCanDelete) actionBtns.push(`<button class="btn-delete-bet" onclick="if(confirm('This bet was taken. Delete anyway as admin?')) deleteBet(${bet.id})" style="background:#dc2626;">Admin Delete</button>`);
+  if (isClosed && bet.taker_id) actionBtns.push(`<button class="btn-unsettle" onclick="unsettleBet(${bet.id})">Unsettle</button>`);
+
   return `
     <div class="bet-card${isClosed ? ' bet-closed' : ''}">
       <div class="bet-header">
@@ -1772,17 +1790,12 @@ function renderMyBetCard(bet) {
       </div>
       <div class="bet-description">${escapeHtml(bet.description)}</div>
       <div class="bet-footer">
-        ${isClosed
-          ? renderBetSettledStatus(bet)
-          : bet.taker_id
-            ? `<span class="bet-status-taken">✓ Taken by ${bet.taker_name}</span>`
-            : `<span class="bet-status-open">Open — waiting for taker</span>`
-        }
-        ${renderSettleUpButtons(bet, 'creator')}
-        ${canDelete ? `<button class="btn-delete-bet" onclick="deleteBet(${bet.id})">Delete</button>` : ''}
-        ${adminCanDelete ? `<button class="btn-delete-bet" onclick="if(confirm('This bet was taken. Delete anyway as admin?')) deleteBet(${bet.id})" style="background:#dc2626;">Admin Delete</button>` : ''}
-        ${isClosed && bet.taker_id ? `<button class="btn-unsettle" onclick="unsettleBet(${bet.id})">Unsettle</button>` : ''}
+        <div class="bet-footer-row">
+          ${statusHtml}
+        </div>
+        ${actionBtns.length > 0 ? `<div class="bet-footer-actions">${actionBtns.join('')}</div>` : ''}
       </div>
+      ${renderSettleUpButtons(bet, 'creator')}
     </div>
   `;
 }
