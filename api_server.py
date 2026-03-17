@@ -16,7 +16,7 @@ from urllib.error import URLError
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from typing import Optional
 import psycopg2
@@ -1092,13 +1092,13 @@ STATIC_DIR = os.path.dirname(os.path.abspath(__file__))
 
 @app.get("/")
 def serve_index():
-    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"), headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"})
 
 @app.get("/{filename}")
 def serve_static(filename: str):
     filepath = os.path.join(STATIC_DIR, filename)
     if os.path.isfile(filepath) and filename in ("app.js", "style.css", "index.html"):
-        return FileResponse(filepath)
+        return FileResponse(filepath, headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"})
     raise HTTPException(status_code=404, detail="Not found")
 
 if __name__ == "__main__":
