@@ -75,6 +75,9 @@ let viewingBracketId = null;
 let betData = { bets: [], revealed: false, reveal_time: 0, bets_on_count: {} };
 let puterData = { bets: [], balance: 500, initial_bankroll: 500, ledger: [] };
 let puterPayouts = { payouts: [], puter_balance: 500, initial_bankroll: 500 };
+let settleUpData = { debts: [], friend_settled: [], friend_settled_count: 0, puter_settled_count: 0 };
+let combinedStandings = { standings: [], puter_balance: 500, puter_initial: 500 };
+let lbTab = 'brackets'; // brackets | bets | puter
 const PUTER_USER_ID = 12;
 let config = { entry_fee: 50, max_bets_per_user: 3, bet_reveal_timestamp: 0 };
 let leaderboardData = { leaderboard: [], championship_combined: null, games_completed: 0 };
@@ -409,7 +412,7 @@ function renderGamesPage() {
 function renderMyBracketsPage() {
   const myBrackets = allBrackets.filter(b => b.user_id === currentUser.id);
 
-  // If we have a currentBracketId, show that bracket for editing
+  // If we have a currentBracketId, show that bracket for editing/viewing
   if (currentBracketId) {
     const bracket = myBrackets.find(b => b.id === currentBracketId);
     if (bracket) {
@@ -419,32 +422,23 @@ function renderMyBracketsPage() {
     currentBracketId = null;
   }
 
-  // Show bracket list / selector
+  // Auto-open the first bracket if user has any
+  if (myBrackets.length > 0) {
+    // Prefer the first submitted bracket, otherwise the first one
+    const defaultBracket = myBrackets.find(b => b.submitted) || myBrackets[0];
+    currentBracketId = defaultBracket.id;
+    currentPicks = defaultBracket.submitted ? {} : { ...(defaultBracket.picks || {}) };
+    currentTiebreaker = defaultBracket.tiebreaker_score || null;
+    return renderBracketEditor(defaultBracket, myBrackets);
+  }
+
+  // No brackets at all
   return `
     <div class="bracket-header">
       <h2>My Brackets</h2>
       <button class="btn-secondary" onclick="createNewBracket()" style="font-size:13px; padding:8px 16px;">+ New Bracket</button>
     </div>
-    ${myBrackets.length === 0
-      ? `<div class="empty-state">You have no brackets yet. Create one to get started!</div>`
-      : `<div class="members-grid">
-          ${myBrackets.map(b => {
-            const pickCount = Object.keys(b.picks || {}).length;
-            return `
-              <div class="member-card" onclick="openBracket(${b.id})">
-                <div class="member-name">${escapeHtml(b.label)}</div>
-                <div class="member-status">
-                  ${b.submitted
-                    ? '<span class="submitted">🔒 Submitted</span>'
-                    : `<span class="pending">${pickCount}/63 picks</span>`
-                  }
-                </div>
-                ${!b.submitted ? `<button class="btn-sm danger" onclick="event.stopPropagation(); deleteBracket(${b.id})" style="margin-top:8px;">Delete</button>` : ''}
-              </div>
-            `;
-          }).join("")}
-        </div>`
-    }
+    <div class="empty-state">You have no brackets yet. Create one to get started!</div>
   `;
 }
 
@@ -454,19 +448,40 @@ function renderBracketEditor(bracket, myBrackets) {
   const pickCount = Object.keys(picks).length;
   const tbValue = locked ? bracket.tiebreaker_score : (currentTiebreaker !== null ? currentTiebreaker : (bracket.tiebreaker_score || ''));
 
+  // Get scoring info for this bracket from leaderboard
+  const lbEntry = (leaderboardData.leaderboard || []).find(e => e.bracket_id === bracket.id);
+  const pickStatus = {};
+  if (lbEntry) {
+    (lbEntry.correct_picks || []).forEach(k => pickStatus[k] = 'correct');
+    (lbEntry.wrong_picks || []).forEach(k => pickStatus[k] = 'wrong');
+    (lbEntry.pending_picks || []).forEach(k => pickStatus[k] = 'pending');
+  }
+
   const selectorHtml = myBrackets.length > 1 ? `
     <select onchange="openBracket(parseInt(this.value))" style="font-size:13px; padding:6px 10px; border-radius:6px; border:1px solid var(--navy-200); margin-right:8px;">
-      ${myBrackets.map(b => `<option value="${b.id}" ${b.id === bracket.id ? 'selected' : ''}>${escapeHtml(b.label)}</option>`).join("")}
+      ${myBrackets.map(b => `<option value="${b.id}" ${b.id === bracket.id ? 'selected' : ''}>${escapeHtml(b.label)}${b.submitted ? ' \u2714' : ''}</option>`).join("")}
     </select>
   ` : '';
 
+  const canCreateMore = myBrackets.length < 3;
+
+  const nameEditHtml = `
+    <span class="bracket-name-editable" onclick="startRenameBracket(${bracket.id}, this)" title="Click to rename" style="cursor:pointer;border-bottom:1px dashed var(--navy-300);">${escapeHtml(bracket.label)}</span>
+  `;
+
   return `
-    <button class="btn-back" onclick="closeBracketEditor()">← All Brackets</button>
-    <div class="bracket-header">
-      <h2>${selectorHtml}${escapeHtml(bracket.label)} <span style="font-weight:400;font-size:14px;color:var(--text-muted)">(${pickCount}/63 picks)</span></h2>
+    <div class="bracket-header" style="margin-bottom:4px;">
+      <h2>${selectorHtml}${nameEditHtml}
+        ${locked
+          ? `<span style="font-weight:400;font-size:13px;color:var(--text-muted);">\u2014 ${pickCount} picks</span>`
+          : `<span style="font-weight:400;font-size:14px;color:var(--text-muted)">(${pickCount}/63 picks)</span>`
+        }
+      </h2>
       <div class="bracket-actions">
         ${locked
-          ? '<span class="locked-badge">🔒 Submitted &amp; Locked</span>'
+          ? `<span class="locked-badge">🔒 Submitted</span>
+             ${lbEntry ? `<span style="font-size:14px;font-weight:700;color:var(--navy-700);margin-left:8px;">${lbEntry.score} pts</span>` : ''}
+             ${canCreateMore ? `<button class="btn-secondary" onclick="createNewBracket()" style="font-size:12px; padding:6px 12px; margin-left:8px;">+ New Bracket</button>` : ''}`
           : `<button class="btn-save-draft" onclick="saveDraft()">Save Draft</button>
              <button class="btn-submit-bracket" onclick="confirmSubmit()">Submit Bracket ($${config.entry_fee})</button>`
         }
@@ -487,7 +502,7 @@ function renderBracketEditor(bracket, myBrackets) {
       <button class="${currentRegion === 'Final Four' ? 'active' : ''}" onclick="switchRegion('Final Four')">Final Four</button>
     </div>
     <div id="bracket-container">
-      ${currentRegion === 'Final Four' ? renderFinalFour(picks, locked) : renderRegion(currentRegion, picks, locked)}
+      ${currentRegion === 'Final Four' ? renderFinalFour(picks, locked, locked ? pickStatus : null) : renderRegion(currentRegion, picks, locked, locked ? pickStatus : null)}
     </div>
   `;
 }
@@ -680,14 +695,40 @@ function renderFinalFour(picks, locked, pickStatus) {
 }
 
 // ===== LEADERBOARD PAGE =====
+function switchLbTab(tab) {
+  lbTab = tab;
+  render();
+}
+
 function renderLeaderboardPage() {
+  const tabStyle = (t) => `
+    padding:8px 16px; font-size:13px; font-weight:600; border:none; cursor:pointer; border-radius:6px 6px 0 0;
+    ${lbTab === t ? 'background:var(--navy-100); color:var(--navy-800);' : 'background:transparent; color:var(--text-muted);'}
+  `;
+
+  return `
+    <h2 class="section-title">Leaderboard</h2>
+
+    <div style="display:flex; gap:4px; border-bottom:2px solid var(--navy-200); margin-bottom:16px;">
+      <button style="${tabStyle('brackets')}" onclick="switchLbTab('brackets')">\u{1F3C0} Brackets</button>
+      <button style="${tabStyle('bets')}" onclick="switchLbTab('bets')">\u{1F91D} Friend Bets</button>
+      <button style="${tabStyle('puter')}" onclick="switchLbTab('puter')">\u{1F916} vs Puter</button>
+      <button style="${tabStyle('overall')}" onclick="switchLbTab('overall')">\u{1F3C6} Overall</button>
+    </div>
+
+    ${lbTab === 'brackets' ? renderBracketsLeaderboard() : ''}
+    ${lbTab === 'bets' ? renderFriendBetsLeaderboard() : ''}
+    ${lbTab === 'puter' ? renderPuterLeaderboard() : ''}
+    ${lbTab === 'overall' ? renderOverallLeaderboard() : ''}
+  `;
+}
+
+function renderBracketsLeaderboard() {
   const entries = leaderboardData.leaderboard || [];
   const champCombined = leaderboardData.championship_combined;
   const gamesCompleted = leaderboardData.games_completed || 0;
 
   return `
-    <h2 class="section-title">Leaderboard</h2>
-
     <div class="scoring-card">
       <h3>ESPN Scoring</h3>
       <div class="scoring-grid">
@@ -742,9 +783,170 @@ function renderLeaderboardPage() {
   `;
 }
 
+function renderFriendBetsLeaderboard() {
+  const standings = combinedStandings.standings || [];
+  // Sort by friend_net descending
+  const sorted = [...standings].filter(s => s.friend_bets > 0 || s.friend_open > 0).sort((a, b) => b.friend_net - a.friend_net);
+
+  if (sorted.length === 0) return '<div class="empty-state">No friend bets settled yet.</div>';
+
+  return `
+    <div class="leaderboard-table-wrap">
+      <table class="leaderboard-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th style="text-align:center;">Won</th>
+            <th style="text-align:center;">Lost</th>
+            <th style="text-align:center;">Open</th>
+            <th style="text-align:right;">Net</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${sorted.map((s, i) => {
+            const isMe = currentUser && s.user_id === currentUser.id;
+            const net = s.friend_net;
+            const netColor = net > 0 ? 'color:#16a34a;' : net < 0 ? 'color:#dc2626;' : '';
+            const netLabel = net > 0 ? `+$${net.toFixed(0)}` : net < 0 ? `-$${Math.abs(net).toFixed(0)}` : 'Even';
+            return `
+              <tr class="${isMe ? 'lb-me' : ''}">
+                <td class="lb-rank">${i + 1}</td>
+                <td class="lb-name">
+                  <div class="lb-avatar" style="width:28px;height:28px;border-radius:50%;background:var(--navy-100);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--navy-700);overflow:hidden;vertical-align:middle;margin-right:8px;">${s.avatar_data ? `<img src="${s.avatar_data}" style="width:100%;height:100%;object-fit:cover;">` : (s.name||'').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}</div>
+                  ${escapeHtml(s.name)}
+                </td>
+                <td style="text-align:center;color:#16a34a;">$${s.friend_won.toFixed(0)}</td>
+                <td style="text-align:center;color:#dc2626;">$${s.friend_lost.toFixed(0)}</td>
+                <td style="text-align:center;color:var(--text-muted);">${s.friend_open}</td>
+                <td class="lb-score" style="${netColor}font-weight:700;">${netLabel}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderPuterLeaderboard() {
+  const standings = combinedStandings.standings || [];
+  const sorted = [...standings].filter(s => s.puter_bets > 0).sort((a, b) => b.puter_net - a.puter_net);
+  const puterBalance = combinedStandings.puter_balance || 500;
+  const puterPnl = puterBalance - (combinedStandings.puter_initial || 500);
+  const puterPnlLabel = puterPnl >= 0
+    ? `<span style="color:#16a34a;">+$${puterPnl.toFixed(0)}</span>`
+    : `<span style="color:#dc2626;">-$${Math.abs(puterPnl).toFixed(0)}</span>`;
+
+  if (sorted.length === 0) return '<div class="empty-state">No Puter bets settled yet.</div>';
+
+  return `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <span style="font-size:13px; color:var(--text-muted);">Puter's bankroll: $${puterBalance.toFixed(0)} (${puterPnlLabel})</span>
+    </div>
+    <div class="leaderboard-table-wrap">
+      <table class="leaderboard-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th style="text-align:center;">Bets</th>
+            <th style="text-align:right;">Net vs Puter</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${sorted.map((s, i) => {
+            const isMe = currentUser && s.user_id === currentUser.id;
+            const net = s.puter_net;
+            const netColor = net > 0 ? 'color:#16a34a;' : net < 0 ? 'color:#dc2626;' : '';
+            const netLabel = net > 0 ? `+$${net.toFixed(0)}` : net < 0 ? `-$${Math.abs(net).toFixed(0)}` : 'Even';
+            const medal = i === 0 && net > 0 ? ' \u{1F451}' : '';
+            return `
+              <tr class="${isMe ? 'lb-me' : ''}">
+                <td class="lb-rank">${i + 1}</td>
+                <td class="lb-name">
+                  <div class="lb-avatar" style="width:28px;height:28px;border-radius:50%;background:var(--navy-100);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--navy-700);overflow:hidden;vertical-align:middle;margin-right:8px;">${s.avatar_data ? `<img src="${s.avatar_data}" style="width:100%;height:100%;object-fit:cover;">` : (s.name||'').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}</div>
+                  ${escapeHtml(s.name)}${medal}
+                </td>
+                <td style="text-align:center;">${s.puter_bets}</td>
+                <td class="lb-score" style="${netColor}font-weight:700;">${netLabel}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderOverallLeaderboard() {
+  const standings = combinedStandings.standings || [];
+  const entries = leaderboardData.leaderboard || [];
+
+  // Build best bracket score per user
+  const bestBracket = {};
+  for (const e of entries) {
+    if (!(e.user_id in bestBracket) || e.score > bestBracket[e.user_id].score) {
+      bestBracket[e.user_id] = { score: e.score, rank: e.rank };
+    }
+  }
+
+  // Merge everything
+  const combined = standings.map(s => {
+    const bs = bestBracket[s.user_id] || { score: 0, rank: '-' };
+    return { ...s, bracket_score: bs.score, bracket_rank: bs.rank };
+  });
+
+  // Sort by total net descending
+  combined.sort((a, b) => b.total_net - a.total_net);
+
+  if (combined.length === 0) return '<div class="empty-state">No data yet.</div>';
+
+  return `
+    <div style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">Combined P&L from friend bets + Puter bets. Bracket pot payouts settle separately.</div>
+    <div class="leaderboard-table-wrap">
+      <table class="leaderboard-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th style="text-align:center;">Bracket</th>
+            <th style="text-align:right;">Friends</th>
+            <th style="text-align:right;">Puter</th>
+            <th style="text-align:right;">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${combined.map((s, i) => {
+            const isMe = currentUser && s.user_id === currentUser.id;
+            const fColor = s.friend_net > 0 ? 'color:#16a34a;' : s.friend_net < 0 ? 'color:#dc2626;' : 'color:var(--text-muted);';
+            const pColor = s.puter_net > 0 ? 'color:#16a34a;' : s.puter_net < 0 ? 'color:#dc2626;' : 'color:var(--text-muted);';
+            const tColor = s.total_net > 0 ? 'color:#16a34a;' : s.total_net < 0 ? 'color:#dc2626;' : 'color:var(--text-muted);';
+            const fmtNet = (v) => v > 0 ? `+$${v.toFixed(0)}` : v < 0 ? `-$${Math.abs(v).toFixed(0)}` : '-';
+            const medal = i === 0 && s.total_net > 0 ? ' \u{1F451}' : '';
+            return `
+              <tr class="${isMe ? 'lb-me' : ''}">
+                <td class="lb-rank">${i + 1}</td>
+                <td class="lb-name">
+                  <div class="lb-avatar" style="width:28px;height:28px;border-radius:50%;background:var(--navy-100);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--navy-700);overflow:hidden;vertical-align:middle;margin-right:8px;">${s.avatar_data ? `<img src="${s.avatar_data}" style="width:100%;height:100%;object-fit:cover;">` : (s.name||'').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}</div>
+                  ${escapeHtml(s.name)}${medal}
+                </td>
+                <td style="text-align:center;">${s.bracket_score > 0 ? s.bracket_score + ' pts' : '-'}</td>
+                <td style="text-align:right;${fColor}font-weight:600;">${fmtNet(s.friend_net)}</td>
+                <td style="text-align:right;${pColor}font-weight:600;">${fmtNet(s.puter_net)}</td>
+                <td class="lb-score" style="${tColor}font-weight:700;">${fmtNet(s.total_net)}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 async function refreshLeaderboard() {
   try {
-    await loadTournamentData();
+    await Promise.all([loadTournamentData(), loadCombinedStandings()]);
     render();
     showToast("Leaderboard refreshed", "success");
   } catch (e) {
@@ -942,6 +1144,8 @@ function renderBetsPage() {
       </div>
       ${betData.bets.filter(b => b.creator_id === currentUser.id).map(renderMyBetCard).join("") || '<div class="empty-state">You haven\'t created any bets yet.</div>'}
     </div>
+
+    ${renderSettleUpLedger()}
 
     <div class="bets-section">
       <h3>Friend Bets</h3>
@@ -1142,6 +1346,75 @@ function renderPuterScoreboard() {
         </tbody>
       </table>
       <div style="margin-top:8px; font-size:11px; color:#64748b; text-align:center;">Green = winning against Puter. Red = Puter's got your number.</div>
+    </div>
+  `;
+}
+
+function renderSettleUpLedger() {
+  const debts = settleUpData.debts || [];
+  const friendSettled = settleUpData.friend_settled || [];
+  const isAdmin = currentUser && currentUser.is_admin;
+
+  // For non-admin users, only show debts involving them
+  const myDebts = isAdmin ? debts : debts.filter(d => d.from_id === currentUser.id || d.to_id === currentUser.id);
+
+  // Also show settled bet history relevant to the user
+  const mySettled = isAdmin ? friendSettled : friendSettled.filter(s => s.winner_id === currentUser.id || s.loser_id === currentUser.id);
+
+  if (myDebts.length === 0 && mySettled.length === 0) return '';
+
+  const debtRows = myDebts.map(d => {
+    const isPuter = d.puter;
+    const label = isPuter ? '🤖' : '';
+    const isMe = d.from_id === currentUser.id;
+    const color = isMe ? '#f87171' : '#4ade80';
+    const arrow = isMe
+      ? `<span style="color:${color};">You owe ${d.to_name}</span>`
+      : `<span style="color:${color};">${d.from_name} owes ${isAdmin && d.to_id === currentUser.id ? 'you' : d.to_name}</span>`;
+    return `
+      <tr>
+        <td style="padding:6px 10px;font-size:13px;">${arrow} ${label}</td>
+        <td style="padding:6px 10px;font-size:13px;text-align:right;font-weight:600;color:${color};">
+          $${d.amount.toFixed(0)}
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  // Settled bet history
+  const historyRows = mySettled.map(s => {
+    const won = s.winner_id === currentUser.id;
+    return `
+      <tr style="border-bottom:1px solid #1e293b;">
+        <td style="padding:4px 10px;font-size:12px;color:#94a3b8;">${escapeHtml(s.description)}</td>
+        <td style="padding:4px 10px;font-size:12px;text-align:center;">${s.winner_name} beat ${s.loser_name}</td>
+        <td style="padding:4px 10px;font-size:12px;text-align:right;font-weight:600;color:${won ? '#4ade80' : '#f87171'};">
+          ${won ? '+' : '-'}$${s.amount.toFixed(0)}
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  return `
+    <div style="margin-top:20px; padding:16px; background:rgba(255,255,255,0.03); border-radius:var(--radius-md); border:1px solid #334155;">
+      <div style="font-size:15px; font-weight:700; color:#e2e8f0; margin-bottom:12px;">💰 ${isAdmin ? 'Settle-Up Ledger' : 'My Settle-Up'}</div>
+      ${myDebts.length > 0 ? `
+        <div style="margin-bottom:12px;">
+          <div style="font-size:11px; font-weight:600; color:#94a3b8; text-transform:uppercase; margin-bottom:6px;">Who Owes Who</div>
+          <table style="width:100%; border-collapse:collapse;">
+            <tbody>${debtRows}</tbody>
+          </table>
+        </div>
+      ` : ''}
+      ${mySettled.length > 0 ? `
+        <details style="margin-top:8px;">
+          <summary style="font-size:11px; font-weight:600; color:#94a3b8; text-transform:uppercase; cursor:pointer; user-select:none;">Settled Bets (${mySettled.length})</summary>
+          <table style="width:100%; border-collapse:collapse; margin-top:6px;">
+            <tbody>${historyRows}</tbody>
+          </table>
+        </details>
+      ` : ''}
+      ${myDebts.length === 0 ? '<div style="font-size:13px; color:#64748b; text-align:center; padding:8px 0;">No debts yet — settle some bets first.</div>' : ''}
     </div>
   `;
 }
@@ -1984,13 +2257,16 @@ function navigate(view) {
     loadLiveSchedule().then(() => render());
   }
   if (view === 'leaderboard') {
-    loadTournamentData().then(() => render());
+    Promise.all([loadTournamentData(), loadCombinedStandings()]).then(() => render());
   }
   if (view === 'trip' || view === 'profile') {
     loadStays().then(() => render());
   }
   if (view === 'admin') {
     loadStays().then(() => render());
+  }
+  if (view === 'bets') {
+    loadBets().then(() => render());
   }
 }
 
@@ -2020,6 +2296,43 @@ function closeBracketEditor() {
   currentPicks = {};
   currentTiebreaker = null;
   render();
+}
+
+function startRenameBracket(bracketId, el) {
+  const bracket = allBrackets.find(b => b.id === bracketId);
+  if (!bracket) return;
+  const currentLabel = bracket.label;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = currentLabel;
+  input.maxLength = 40;
+  input.style.cssText = 'font-size:inherit;font-weight:inherit;font-family:inherit;padding:2px 6px;border:2px solid var(--navy-400);border-radius:4px;background:var(--navy-50);color:var(--navy-800);width:200px;outline:none;';
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+
+  const doRename = async () => {
+    const newLabel = input.value.trim();
+    if (!newLabel || newLabel === currentLabel) {
+      render();
+      return;
+    }
+    try {
+      await apiPut(`/api/brackets/${bracketId}/rename?viewer_id=${currentUser.id}`, { label: newLabel });
+      bracket.label = newLabel;
+      showToast(`Renamed to "${newLabel}"`, 'success');
+      render();
+    } catch (err) {
+      showToast(err.message, 'error');
+      render();
+    }
+  };
+
+  input.addEventListener('blur', doRename);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { e.preventDefault(); render(); }
+  });
 }
 
 async function createNewBracket() {
@@ -2403,6 +2716,14 @@ async function loadTournamentData() {
   }
 }
 
+async function loadCombinedStandings() {
+  try {
+    combinedStandings = await apiGet('/api/leaderboard/combined');
+  } catch(e) {
+    combinedStandings = { standings: [], puter_balance: 500, puter_initial: 500 };
+  }
+}
+
 async function loadLiveSchedule() {
   try {
     liveSchedule = await apiGet("/api/tournament/schedule");
@@ -2422,6 +2743,11 @@ async function loadBets() {
     puterPayouts = await apiGet('/api/puter/payouts');
   } catch(e) {
     puterPayouts = { payouts: [], puter_balance: 500, initial_bankroll: 500 };
+  }
+  try {
+    settleUpData = await apiGet('/api/settle-up/summary');
+  } catch(e) {
+    settleUpData = { debts: [], friend_settled: [], friend_settled_count: 0, puter_settled_count: 0 };
   }
 }
 

@@ -278,6 +278,9 @@ class SubmitBracketRequest(BaseModel):
 class CreateBracketRequest(BaseModel):
     user_id: int
 
+class RenameBracketRequest(BaseModel):
+    label: str
+
 class CreateBetRequest(BaseModel):
     about_user_id: int
     description: str
@@ -600,6 +603,30 @@ def create_bracket(req: CreateBracketRequest):
     db.commit()
     cur.close()
     return {"id": bracket_id, "label": label}
+
+@app.put("/api/brackets/{bracket_id}/rename")
+def rename_bracket(bracket_id: int, req: RenameBracketRequest, viewer_id: int = 0):
+    label = req.label.strip()
+    if not label or len(label) > 40:
+        raise HTTPException(status_code=400, detail="Label must be 1-40 characters")
+    cur = get_cursor()
+    cur.execute("SELECT * FROM brackets WHERE id = %s", (bracket_id,))
+    bracket = fetchone_dict(cur)
+    if not bracket:
+        cur.close()
+        raise HTTPException(status_code=404, detail="Bracket not found")
+    if bracket["user_id"] != viewer_id:
+        # Check admin
+        cur.execute("SELECT is_admin FROM users WHERE id = %s", (viewer_id,))
+        viewer = fetchone_dict(cur)
+        if not viewer or not viewer.get("is_admin"):
+            cur.close()
+            raise HTTPException(status_code=403, detail="Not authorized")
+    cur.execute("UPDATE brackets SET label = %s, updated_at = %s WHERE id = %s",
+               (label, time.time(), bracket_id))
+    db.commit()
+    cur.close()
+    return {"ok": True, "label": label}
 
 @app.put("/api/brackets/{bracket_id}/picks")
 def save_picks(bracket_id: int, req: SavePicksRequest):
@@ -1162,6 +1189,226 @@ def puter_payouts():
             "summary": f"They owe Paul ${round(net, 2)}" if net > 0 else f"Paul owes them ${round(abs(net), 2)}" if net < 0 else "Even"
         })
     return {"payouts": payouts, "puter_balance": balance, "initial_bankroll": 500.0}
+
+@app.get("/api/settle-up/summary")
+def settle_up_summary():
+    """Combined settle-up ledger: friend bets + Puter bets => who owes who."""
+    cur = get_cursor()
+
+    # --- Friend bets: settled (closed=True, taker_id not null, settle_winner in ('creator','taker')) ---
+    cur.execute("""
+        SELECT b.id, b.description, b.amount, b.creator_id, b.taker_id, b.settle_winner,
+               c.display_name as creator_name, t.display_name as taker_name
+        FROM bets b
+        JOIN users c ON b.creator_id = c.id
+        JOIN users t ON b.taker_id = t.id
+        WHERE b.closed = TRUE
+          AND b.taker_id IS NOT NULL
+          AND b.settle_winner IN ('creator', 'taker')
+          AND b.creator_id != 12
+        ORDER BY b.closed_at DESC
+    """)
+    friend_bets = fetchall_dict(cur)
+
+    # Build per-pair net tallies for friend bets
+    # Each settled bet: loser owes winner the amount
+    pair_nets = {}  # key = (loser_id, winner_id), value = amount
+    friend_settled = []
+    for fb in friend_bets:
+        if fb["settle_winner"] == "creator":
+            winner_id = fb["creator_id"]
+            winner_name = fb["creator_name"]
+            loser_id = fb["taker_id"]
+            loser_name = fb["taker_name"]
+        else:
+            winner_id = fb["taker_id"]
+            winner_name = fb["taker_name"]
+            loser_id = fb["creator_id"]
+            loser_name = fb["creator_name"]
+        friend_settled.append({
+            "bet_id": fb["id"],
+            "description": fb["description"],
+            "amount": fb["amount"],
+            "winner_id": winner_id,
+            "winner_name": winner_name,
+            "loser_id": loser_id,
+            "loser_name": loser_name,
+        })
+
+    # Build net per user pair (lower_id, higher_id) to simplify
+    pair_map = {}  # (id_a, id_b) => net from a's perspective (positive = b owes a)
+    for s in friend_settled:
+        a, b = min(s["winner_id"], s["loser_id"]), max(s["winner_id"], s["loser_id"])
+        if (a, b) not in pair_map:
+            pair_map[(a, b)] = 0
+        if s["winner_id"] == a:
+            pair_map[(a, b)] += s["amount"]
+        else:
+            pair_map[(a, b)] -= s["amount"]
+
+    # --- Puter bets ---
+    cur.execute("""
+        SELECT u.id as user_id, u.display_name,
+            SUM(pl.amount) as net_puter
+        FROM puter_ledger pl
+        JOIN bets b ON pl.bet_id = b.id
+        JOIN users u ON b.taker_id = u.id
+        GROUP BY u.id, u.display_name
+    """)
+    puter_rows = fetchall_dict(cur)
+    puter_nets = {}  # user_id => net (positive = they owe Paul, negative = Paul owes them)
+    for r in puter_rows:
+        puter_nets[r["id"]] = round(r["net_puter"], 2)
+
+    # --- Build combined per-person summary (from Paul's perspective as admin) ---
+    # Get all users
+    cur.execute("SELECT id, display_name FROM users WHERE id != 12 ORDER BY display_name")
+    users = fetchall_dict(cur)
+    user_map = {u["id"]: u["display_name"] for u in users}
+
+    # Per-person net vs everyone
+    person_nets = {}  # user_id => { vs_user_id: net_amount }
+    for (a, b), net in pair_map.items():
+        if a not in person_nets: person_nets[a] = {}
+        if b not in person_nets: person_nets[b] = {}
+        person_nets[a][b] = net  # positive = b owes a
+        person_nets[b][a] = -net
+
+    # Build the "who owes who" list — each entry is a debt
+    debts = []
+    seen = set()
+    for (a, b), net in pair_map.items():
+        if net == 0:
+            continue
+        if net > 0:
+            debts.append({"from_id": b, "from_name": user_map.get(b, "?"), "to_id": a, "to_name": user_map.get(a, "?"), "amount": round(net, 2)})
+        else:
+            debts.append({"from_id": a, "from_name": user_map.get(a, "?"), "to_id": b, "to_name": user_map.get(b, "?"), "amount": round(abs(net), 2)})
+
+    # Add Puter debts (Puter = Paul's bankroll)
+    for uid, net in puter_nets.items():
+        if net == 0:
+            continue
+        if net > 0:  # they owe Paul
+            debts.append({"from_id": uid, "from_name": user_map.get(uid, "?"), "to_id": 1, "to_name": "Paul", "amount": round(net, 2), "puter": True})
+        else:  # Paul owes them
+            debts.append({"from_id": 1, "from_name": "Paul", "to_id": uid, "to_name": user_map.get(uid, "?"), "amount": round(abs(net), 2), "puter": True})
+
+    # Sort by amount descending
+    debts.sort(key=lambda d: d["amount"], reverse=True)
+
+    cur.close()
+    return {
+        "debts": debts,
+        "friend_settled": friend_settled,
+        "friend_settled_count": len(friend_settled),
+        "puter_settled_count": len([r for r in puter_rows if True]),
+    }
+
+@app.get("/api/leaderboard/combined")
+def combined_leaderboard():
+    """Combined leaderboard: friend bets P&L per person."""
+    cur = get_cursor()
+
+    # Friend bets: settled with a winner
+    cur.execute("""
+        SELECT b.id, b.amount, b.creator_id, b.taker_id, b.settle_winner
+        FROM bets b
+        WHERE b.closed = TRUE
+          AND b.taker_id IS NOT NULL
+          AND b.settle_winner IN ('creator', 'taker')
+          AND b.creator_id != 12
+    """)
+    friend_bets = fetchall_dict(cur)
+
+    # Build per-person net for friend bets
+    friend_net = {}  # user_id => { won: X, lost: Y, bets: N }
+    for fb in friend_bets:
+        cid, tid = fb["creator_id"], fb["taker_id"]
+        amt = fb["amount"]
+        winner_id = cid if fb["settle_winner"] == "creator" else tid
+        loser_id = tid if fb["settle_winner"] == "creator" else cid
+        if winner_id not in friend_net:
+            friend_net[winner_id] = {"won": 0, "lost": 0, "bets": 0}
+        if loser_id not in friend_net:
+            friend_net[loser_id] = {"won": 0, "lost": 0, "bets": 0}
+        friend_net[winner_id]["won"] += amt
+        friend_net[winner_id]["bets"] += 1
+        friend_net[loser_id]["lost"] += amt
+        friend_net[loser_id]["bets"] += 1
+
+    # Puter bets per person
+    cur.execute("""
+        SELECT b.taker_id, SUM(CASE WHEN pl.amount > 0 THEN 1 ELSE 0 END) as puter_wins,
+               SUM(CASE WHEN pl.amount < 0 THEN 1 ELSE 0 END) as puter_losses,
+               SUM(pl.amount) as net_puter,
+               COUNT(*) as total_puter_bets
+        FROM puter_ledger pl
+        JOIN bets b ON pl.bet_id = b.id
+        GROUP BY b.taker_id
+    """)
+    puter_rows = fetchall_dict(cur)
+    puter_net = {}
+    for r in puter_rows:
+        puter_net[r["taker_id"]] = {
+            "wins": r["puter_wins"],
+            "losses": r["puter_losses"],
+            "net": round(r["net_puter"], 2),
+            "bets": r["total_puter_bets"]
+        }
+
+    # Get all users (excluding Puter)
+    cur.execute("SELECT id, display_name, avatar_data FROM users WHERE id != 12 ORDER BY display_name")
+    users = fetchall_dict(cur)
+
+    # Also count open (unsettled) friend bets per person
+    cur.execute("""
+        SELECT creator_id, taker_id FROM bets
+        WHERE closed = FALSE AND taker_id IS NOT NULL AND creator_id != 12
+    """)
+    open_friend = fetchall_dict(cur)
+    open_bets_count = {}
+    for ob in open_friend:
+        for uid in [ob["creator_id"], ob["taker_id"]]:
+            open_bets_count[uid] = open_bets_count.get(uid, 0) + 1
+
+    # Build combined standings
+    standings = []
+    for u in users:
+        uid = u["id"]
+        fn = friend_net.get(uid, {"won": 0, "lost": 0, "bets": 0})
+        pn = puter_net.get(uid, {"wins": 0, "losses": 0, "net": 0, "bets": 0})
+        friend_pnl = round(fn["won"] - fn["lost"], 2)
+        puter_pnl = round(-pn["net"], 2)  # flip: negative net_puter = user winning
+        total_pnl = round(friend_pnl + puter_pnl, 2)
+        standings.append({
+            "user_id": uid,
+            "name": u["display_name"],
+            "avatar_data": u.get("avatar_data"),
+            "friend_won": round(fn["won"], 2),
+            "friend_lost": round(fn["lost"], 2),
+            "friend_net": friend_pnl,
+            "friend_bets": fn["bets"],
+            "friend_open": open_bets_count.get(uid, 0),
+            "puter_net": puter_pnl,
+            "puter_bets": pn["bets"],
+            "total_net": total_pnl,
+        })
+
+    # Sort by total net descending (most profitable first)
+    standings.sort(key=lambda s: s["total_net"], reverse=True)
+
+    # Get Puter balance
+    cur.execute("SELECT balance_after FROM puter_ledger ORDER BY id DESC LIMIT 1")
+    bal = cur.fetchone()
+    puter_balance = bal[0] if bal else 500.0
+
+    cur.close()
+    return {
+        "standings": standings,
+        "puter_balance": puter_balance,
+        "puter_initial": 500.0,
+    }
 
 @app.get("/api/config")
 def get_config():
