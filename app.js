@@ -1007,6 +1007,65 @@ function renderProfilePage() {
     </div>
     ` : ''}
 
+    ${(() => {
+      const stay = allStays.find(s => s.user_id === user.id);
+      const hasStay = stay && (stay.hotel_name || stay.check_in || stay.check_out || stay.arrival || stay.departure);
+      const hasLink = stay && stay.hotel_link && stay.hotel_link.startsWith('http');
+      const mapsSearchLink = stay && stay.hotel_name ? `https://www.google.com/maps/search/${encodeURIComponent(stay.hotel_name + ' Las Vegas')}` : '';
+      const linkToUse = hasLink ? stay.hotel_link : mapsSearchLink;
+      if (isOwnProfile) {
+        return `
+          <div class="bets-section">
+            <h3>🏨 My Stay</h3>
+            <div class="form-row">
+              <div class="form-field">
+                <label>Hotel / Property Name</label>
+                <input type="text" id="profile-stay-hotel" placeholder="e.g. The Venetian" value="${stay ? escapeHtml(stay.hotel_name) : ''}">
+              </div>
+              <div class="form-field">
+                <label>Location Link <span style="font-size:11px;color:var(--text-muted);">(Google Maps URL)</span></label>
+                <input type="url" id="profile-stay-link" placeholder="https://maps.google.com/..." value="${stay ? escapeHtml(stay.hotel_link) : ''}">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-field">
+                <label>Check-in</label>
+                <input type="date" id="profile-stay-in" value="${stay ? stay.check_in : ''}">
+              </div>
+              <div class="form-field">
+                <label>Check-out</label>
+                <input type="date" id="profile-stay-out" value="${stay ? stay.check_out : ''}">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-field">
+                <label>Arrival <span style="font-size:11px;color:var(--text-muted);">(flight/time info)</span></label>
+                <input type="text" id="profile-stay-arrival" placeholder="e.g. Mar 18, 3:30 PM — SW 1234" value="${stay && stay.arrival ? escapeHtml(stay.arrival) : ''}">
+              </div>
+              <div class="form-field">
+                <label>Departure <span style="font-size:11px;color:var(--text-muted);">(flight/time info)</span></label>
+                <input type="text" id="profile-stay-departure" placeholder="e.g. Mar 22, 11:00 AM — SW 5678" value="${stay && stay.departure ? escapeHtml(stay.departure) : ''}">
+              </div>
+            </div>
+            <button class="btn-primary" style="width:auto;padding:10px 20px;font-size:13px;" onclick="saveProfileStay()">Save My Stay</button>
+          </div>
+        `;
+      } else if (hasStay) {
+        return `
+          <div class="bets-section">
+            <h3>🏨 Stay Info</h3>
+            <div style="display:flex;flex-direction:column;gap:6px;font-size:14px;">
+              ${stay.hotel_name ? `<div><strong>Hotel:</strong> ${linkToUse ? `<a href="${escapeHtml(linkToUse)}" target="_blank" rel="noopener" style="color:var(--orange-500);text-decoration:none;">${escapeHtml(stay.hotel_name)} 📍</a>` : escapeHtml(stay.hotel_name)}</div>` : ''}
+              ${stay.check_in || stay.check_out ? `<div><strong>Dates:</strong> ${stay.check_in ? formatStayDate(stay.check_in) : '?'} → ${stay.check_out ? formatStayDate(stay.check_out) : '?'}</div>` : ''}
+              ${stay.arrival ? `<div><strong>✈ Arrives:</strong> ${escapeHtml(stay.arrival)}</div>` : ''}
+              ${stay.departure ? `<div><strong>✈ Departs:</strong> ${escapeHtml(stay.departure)}</div>` : ''}
+            </div>
+          </div>
+        `;
+      }
+      return '';
+    })()}
+
     ${userBrackets.length > 0 ? `
     <div class="bets-section">
       <h3>Brackets</h3>
@@ -1158,118 +1217,31 @@ function renderTripPage() {
 
     <div class="trip-section">
       <h3>🏨 Where Is Everyone Staying?</h3>
-      ${currentUser.is_admin ? `
-        <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">As admin, you can set up stays for everyone. They can update their own later.</p>
-        ${allUsers.map(u => {
-          const stay = allStays.find(s => s.user_id === u.id);
-          return `
-            <div class="my-stay-form" style="margin-bottom:16px;">
-              <h4 style="display:flex;align-items:center;gap:8px;"><div class="mini-avatar" style="width:24px;height:24px;font-size:10px;">${renderAvatar(u)}</div> ${escapeHtml(u.display_name)}'s Stay</h4>
-              <div class="form-row">
-                <div class="form-field">
-                  <label>Hotel / Property Name</label>
-                  <input type="text" id="trip-stay-hotel-${u.id}" placeholder="e.g. The Venetian" value="${stay ? escapeHtml(stay.hotel_name) : ''}">
-                </div>
-                <div class="form-field">
-                  <label>Location Link <span style="font-size:11px;color:var(--text-muted);">(Google Maps URL)</span></label>
-                  <input type="url" id="trip-stay-link-${u.id}" placeholder="https://maps.google.com/..." value="${stay ? escapeHtml(stay.hotel_link) : ''}">
-                </div>
-              </div>
-              <div class="form-row">
-                <div class="form-field">
-                  <label>Check-in</label>
-                  <input type="date" id="trip-stay-in-${u.id}" value="${stay ? stay.check_in : ''}">
-                </div>
-                <div class="form-field">
-                  <label>Check-out</label>
-                  <input type="date" id="trip-stay-out-${u.id}" value="${stay ? stay.check_out : ''}">
-                </div>
-              </div>
-              <div class="form-row">
-                <div class="form-field">
-                  <label>Arrival <span style="font-size:11px;color:var(--text-muted);">(flight/time info)</span></label>
-                  <input type="text" id="trip-stay-arrival-${u.id}" placeholder="e.g. Mar 18, 3:30 PM — SW 1234" value="${stay && stay.arrival ? escapeHtml(stay.arrival) : ''}">
-                </div>
-                <div class="form-field">
-                  <label>Departure <span style="font-size:11px;color:var(--text-muted);">(flight/time info)</span></label>
-                  <input type="text" id="trip-stay-departure-${u.id}" placeholder="e.g. Mar 22, 11:00 AM — SW 5678" value="${stay && stay.departure ? escapeHtml(stay.departure) : ''}">
-                </div>
-              </div>
-              <button class="btn-primary" style="width:auto;padding:10px 20px;font-size:13px;" onclick="saveTripStay(${u.id})">Save ${u.id === currentUser.id ? 'My' : escapeHtml(u.display_name) + "'s"} Stay</button>
-            </div>
-          `;
-        }).join('')}
-      ` : `
-        <div class="my-stay-form">
-          <h4>My Stay</h4>
-          <div class="form-row">
-            <div class="form-field">
-              <label>Hotel / Property Name</label>
-              <input type="text" id="trip-stay-hotel-${currentUser.id}" placeholder="e.g. The Venetian" value="${myStay ? escapeHtml(myStay.hotel_name) : ''}">
-            </div>
-            <div class="form-field">
-              <label>Location Link <span style="font-size:11px;color:var(--text-muted);">(Google Maps URL)</span></label>
-              <input type="url" id="trip-stay-link-${currentUser.id}" placeholder="https://maps.google.com/..." value="${myStay ? escapeHtml(myStay.hotel_link) : ''}">
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-field">
-              <label>Check-in</label>
-              <input type="date" id="trip-stay-in-${currentUser.id}" value="${myStay ? myStay.check_in : ''}">
-            </div>
-            <div class="form-field">
-              <label>Check-out</label>
-              <input type="date" id="trip-stay-out-${currentUser.id}" value="${myStay ? myStay.check_out : ''}">
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-field">
-              <label>Arrival <span style="font-size:11px;color:var(--text-muted);">(flight/time info)</span></label>
-              <input type="text" id="trip-stay-arrival-${currentUser.id}" placeholder="e.g. Mar 18, 3:30 PM — SW 1234" value="${myStay && myStay.arrival ? escapeHtml(myStay.arrival) : ''}">
-            </div>
-            <div class="form-field">
-              <label>Departure <span style="font-size:11px;color:var(--text-muted);">(flight/time info)</span></label>
-              <input type="text" id="trip-stay-departure-${currentUser.id}" placeholder="e.g. Mar 22, 11:00 AM — SW 5678" value="${myStay && myStay.departure ? escapeHtml(myStay.departure) : ''}">
-            </div>
-          </div>
-          <button class="btn-primary" style="width:auto;padding:10px 20px;font-size:13px;" onclick="saveTripStay(${currentUser.id})">Save My Stay</button>
-        </div>
-      `}
-
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Tap a name to see full details or update your own stay on your profile.</p>
       ${allStays.length > 0 ? `
-        <div class="stays-grid">
-          ${allStays.map(s => {
-            const user = allUsers.find(u => u.id === s.user_id);
-            if (!user) return '';
-            const hasLink = s.hotel_link && s.hotel_link.startsWith('http');
-            const mapsSearchLink = s.hotel_name ? `https://www.google.com/maps/search/${encodeURIComponent(s.hotel_name + ' Las Vegas')}` : '';
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${allUsers.map(u => {
+            const s = allStays.find(st => st.user_id === u.id);
+            const hasStay = s && (s.hotel_name || s.check_in || s.arrival || s.departure);
+            const hasLink = s && s.hotel_link && s.hotel_link.startsWith('http');
+            const mapsSearchLink = s && s.hotel_name ? `https://www.google.com/maps/search/${encodeURIComponent(s.hotel_name + ' Las Vegas')}` : '';
             const linkToUse = hasLink ? s.hotel_link : mapsSearchLink;
             return `
-              <div class="stay-card">
-                <div class="stay-header">
-                  <div class="mini-avatar">${renderAvatar(user)}</div>
-                  <div class="stay-name">${escapeHtml(user.display_name)}</div>
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--navy-50,#f6f8fb);border-radius:8px;cursor:pointer;" onclick="viewProfile(${u.id})">
+                <div class="mini-avatar" style="width:32px;height:32px;font-size:12px;flex-shrink:0;">${renderAvatar(u)}</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-weight:600;font-size:13px;">${escapeHtml(u.display_name)}</div>
+                  ${hasStay ? `<div style="font-size:12px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                    ${s.hotel_name ? escapeHtml(s.hotel_name) : ''}
+                    ${s.check_in || s.check_out ? ` · ${s.check_in ? formatStayDate(s.check_in) : '?'} → ${s.check_out ? formatStayDate(s.check_out) : '?'}` : ''}
+                  </div>` : `<div style="font-size:12px;color:var(--text-muted);font-style:italic;">No stay info yet</div>`}
                 </div>
-                ${s.hotel_name ? `
-                  <div class="stay-hotel">
-                    ${linkToUse ? `<a href="${linkToUse}" target="_blank" rel="noopener" class="stay-hotel-link">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="flex-shrink:0;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                      ${escapeHtml(s.hotel_name)}
-                    </a>` : escapeHtml(s.hotel_name)}
-                  </div>
-                ` : ''}
-                ${s.check_in || s.check_out ? `
-                  <div class="stay-dates">
-                    ${s.check_in ? formatStayDate(s.check_in) : '?'} → ${s.check_out ? formatStayDate(s.check_out) : '?'}
-                  </div>
-                ` : ''}
-                ${s.arrival ? `<div class="stay-travel"><span class="stay-travel-label">✈ Arrives:</span> ${escapeHtml(s.arrival)}</div>` : ''}
-                ${s.departure ? `<div class="stay-travel"><span class="stay-travel-label">✈ Departs:</span> ${escapeHtml(s.departure)}</div>` : ''}
+                ${hasStay && linkToUse ? `<a href="${escapeHtml(linkToUse)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--orange-500);font-size:18px;text-decoration:none;flex-shrink:0;" title="Open in Maps">📍</a>` : ''}
               </div>
             `;
           }).join('')}
         </div>
-      ` : `<div class="empty-state" style="margin-top:16px;">No one has added their stay info yet. Be the first!</div>`}
+      ` : `<div class="empty-state" style="margin-top:16px;">No one has added their stay info yet.</div>`}
     </div>
   `;
 }
@@ -1322,6 +1294,27 @@ async function saveAdminStay(userId) {
 }
 
 // ===== BIO FUNCTIONS =====
+async function saveProfileStay() {
+  const hotel_name = document.getElementById('profile-stay-hotel')?.value || '';
+  const hotel_link = document.getElementById('profile-stay-link')?.value || '';
+  const check_in = document.getElementById('profile-stay-in')?.value || '';
+  const check_out = document.getElementById('profile-stay-out')?.value || '';
+  const arrival = document.getElementById('profile-stay-arrival')?.value || '';
+  const departure = document.getElementById('profile-stay-departure')?.value || '';
+  if (!hotel_name && !check_in && !check_out && !arrival && !departure) {
+    showToast('Fill in at least one field', 'error');
+    return;
+  }
+  try {
+    await apiPut(`/api/stays/${currentUser.id}`, { hotel_name, hotel_link, check_in, check_out, arrival, departure });
+    showToast('Stay info saved', 'success');
+    await loadStays();
+    render();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
 async function saveMyBio() {
   const bio = document.getElementById('edit-bio')?.value || '';
   try {
@@ -1578,7 +1571,7 @@ function navigate(view) {
   if (view === 'leaderboard') {
     loadTournamentData().then(() => render());
   }
-  if (view === 'trip') {
+  if (view === 'trip' || view === 'profile') {
     loadStays().then(() => render());
   }
   if (view === 'admin') {
