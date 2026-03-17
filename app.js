@@ -993,10 +993,18 @@ function renderPuterBetsSection() {
           <li><strong>What is Puter?</strong> Your AI opponent. Puter posts bets and you can take the other side.</li>
           <li><strong>Bankroll:</strong> Puter started with $500 in house money from Paul.</li>
           <li><strong>One at a time:</strong> You can only have 1 active bet with Puter at a time. Once it settles, you can take another.</li>
-          <li><strong>Fair game:</strong> Puter can bet on sports, Vegas happenings, group members — anything that can settle quickly.</li>
+          <li><strong>Two types of bets:</strong>
+            <ul style="margin-top:4px;">
+              <li><span style="background:#1e3a5f;color:#60a5fa;padding:1px 6px;border-radius:4px;font-size:11px;">Sports</span> — March Madness games, scores, spreads, Golden Knights, etc. Clear black-and-white outcomes anyone can verify.</li>
+              <li><span style="background:#92400e;color:#fbbf24;padding:1px 6px;border-radius:4px;font-size:11px;">Prop</span> — Fun bets about the group and the trip. These are rare and need Paul to settle.</li>
+            </ul>
+          </li>
+          <li><strong>Settling sports bets:</strong> Once the game or event is over, you can settle it yourself — just hit the Puter Wins or your name Wins button. Puter also auto-checks results every hour as a backup. No waiting around.</li>
+          <li><strong>Settling prop bets:</strong> Only Paul can settle these, since they\'re judgment calls (did Greg really get lost for 30 minutes?).</li>
+          <li><strong>Fresh bets every 2 hours:</strong> Puter rotates in new bets every 2 hours. If nobody takes a bet within 2 hours, it expires and gets replaced with something new. There\'s always something to bet on.</li>
           <li><strong>No lingering bets:</strong> Every bet resolves within a day or two. No long-term stuff.</li>
-          <li><strong>Settling:</strong> Paul settles all Puter bets and pays out via Venmo.</li>
-          <li><strong>Window:</strong> Puter\'s bets start Thursday and close Sunday night after the last March Madness game.</li>
+          <li><strong>Payouts:</strong> Paul settles all payouts via Venmo.</li>
+          <li><strong>Window:</strong> Puter\'s bets start Thursday morning and close Sunday night after the last March Madness game.</li>
           <li><strong>Max bets:</strong> Puter can have up to 11 open bets at a time (one per member).</li>
         </ul>
       </div>
