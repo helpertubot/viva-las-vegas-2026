@@ -288,6 +288,9 @@ class AddUserRequest(BaseModel):
 class UpdateAvatarRequest(BaseModel):
     user_id: int
 
+# ---- Session tokens (in-memory) ----
+active_sessions = {}  # token -> user_id
+
 # ---- Auth (username + password) ----
 @app.post("/api/login")
 def login(req: LoginRequest):
@@ -303,12 +306,36 @@ def login(req: LoginRequest):
         if not verify_password(req.password, user.get("password_hash", "")):
             raise HTTPException(status_code=401, detail="Invalid username or password")
         user.pop("password_hash", None)
-        return {"user": user}
+        # Create session token
+        token = secrets.token_urlsafe(32)
+        active_sessions[token] = user["id"]
+        return {"user": user, "session_token": token}
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"LOGIN ERROR: {e}")
         logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/session")
+def restore_session(token: str = ""):
+    """Restore a session from a token."""
+    if not token or token not in active_sessions:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    user_id = active_sessions[token]
+    try:
+        cur = get_cursor()
+        cur.execute("SELECT id, email, username, display_name, avatar_data, is_admin, COALESCE(bio, '') as bio FROM users WHERE id = %s", (user_id,))
+        user = fetchone_dict(cur)
+        cur.close()
+        if not user:
+            del active_sessions[token]
+            raise HTTPException(status_code=401, detail="User not found")
+        return {"user": user}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"SESSION RESTORE ERROR: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ---- Users ----

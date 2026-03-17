@@ -124,6 +124,36 @@ async function apiDelete(path) {
   return res.json();
 }
 
+// ===== SESSION PERSISTENCE =====
+function setSessionToken(token) {
+  try { document.cookie = `vlv_session=${token};path=/;max-age=${60*60*24*7};SameSite=Lax`; } catch(e) {}
+}
+function getSessionToken() {
+  try {
+    const m = document.cookie.match(/vlv_session=([^;]+)/);
+    return m ? m[1] : null;
+  } catch(e) { return null; }
+}
+function clearSessionToken() {
+  try { document.cookie = 'vlv_session=;path=/;max-age=0'; } catch(e) {}
+}
+
+async function restoreSession() {
+  const token = getSessionToken();
+  if (!token) return false;
+  try {
+    const res = await apiGet(`/api/session?token=${encodeURIComponent(token)}`);
+    if (res.user) {
+      currentUser = res.user;
+      await loadAllData();
+      return true;
+    }
+  } catch(e) {
+    clearSessionToken();
+  }
+  return false;
+}
+
 // ===== TOAST =====
 function showToast(msg, type = "info") {
   let toast = document.querySelector(".toast");
@@ -215,7 +245,7 @@ function renderHeader() {
         <button onclick="navigate('games')" class="${currentView === 'games' ? 'active' : ''}">Games</button>
         <button onclick="navigate('bets')" class="${currentView === 'bets' ? 'active' : ''}">Bets</button>
         <button onclick="navigate('leaderboard')" class="${currentView === 'leaderboard' ? 'active' : ''}">Leaderboard</button>
-        <button onclick="navigate('trip')" class="${currentView === 'trip' ? 'active' : ''}">Trip</button>
+        <button onclick="navigate('trip')" class="${currentView === 'trip' ? 'active' : ''}">Itinerary</button>
         ${currentUser.is_admin ? `<button onclick="navigate('admin')" class="${currentView === 'admin' ? 'active' : ''}">Admin</button>` : ''}
       </nav>
       <div class="header-user">
@@ -235,11 +265,11 @@ function renderMobileNav() {
         Home
       </button>
       <button onclick="navigate('bracket')" class="${currentView === 'bracket' ? 'active' : ''}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 4h4v4H3zM3 16h4v4H3zM17 4h4v4H17zM17 16h4v4H17zM7 6h4v0M7 18h4v0M11 6v12M11 12h6M17 6v0M17 18v0"/></svg>
         Bracket
       </button>
       <button onclick="navigate('games')" class="${currentView === 'games' ? 'active' : ''}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07"/><path d="M12 2a10 10 0 010 20"/></svg>
         Games
       </button>
       <button onclick="navigate('bets')" class="${currentView === 'bets' ? 'active' : ''}">
@@ -248,11 +278,11 @@ function renderMobileNav() {
       </button>
       <button onclick="navigate('leaderboard')" class="${currentView === 'leaderboard' ? 'active' : ''}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21V8m4 13V4m4 17v-9"/></svg>
-        Board
+        Leaderboard
       </button>
       <button onclick="navigate('trip')" class="${currentView === 'trip' ? 'active' : ''}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-        Trip
+        Itinerary
       </button>
       ${currentUser.is_admin ? `
       <button onclick="navigate('admin')" class="${currentView === 'admin' ? 'active' : ''}">
@@ -1539,6 +1569,7 @@ async function loginWithCredentials(username, password) {
   try {
     const res = await apiPost("/api/login", { username, password });
     currentUser = res.user;
+    if (res.session_token) setSessionToken(res.session_token);
     await loadAllData();
     currentBracketId = null;
     currentPicks = {};
@@ -1553,6 +1584,7 @@ async function loginWithCredentials(username, password) {
 }
 
 function logout() {
+  clearSessionToken();
   currentUser = null;
   currentView = "home";
   currentPicks = {};
@@ -1995,10 +2027,14 @@ function escapeHtml(str) {
 async function init() {
   // Render login page immediately (don't wait for API on cold start)
   render();
+  // Try restoring session from cookie
+  restoreSession().then(restored => {
+    if (restored) render();
+  }).catch(() => {});
   // Load config in background — re-render once ready
   apiGet("/api/config").then(cfg => {
     config = cfg;
-    render();
+    if (currentUser) render();
   }).catch(() => {});
   // Preload live schedule in background
   loadLiveSchedule().then(() => {
