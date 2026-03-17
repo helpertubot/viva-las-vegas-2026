@@ -1077,7 +1077,7 @@ function getAdminSchedule() {
 function addScheduleEvent(dayIdx) {
   captureScheduleInputs();
   const sched = getAdminSchedule();
-  sched[dayIdx].events.push({ time: '', desc: '' });
+  sched[dayIdx].events.push({ time: '', desc: '', location: '' });
   render();
 }
 
@@ -1095,8 +1095,10 @@ function captureScheduleInputs() {
     for (let ei = 0; ei < sched[di].events.length; ei++) {
       const timeEl = document.getElementById(`sched-time-${di}-${ei}`);
       const descEl = document.getElementById(`sched-desc-${di}-${ei}`);
+      const locEl = document.getElementById(`sched-loc-${di}-${ei}`);
       if (timeEl) sched[di].events[ei].time = timeEl.value;
       if (descEl) sched[di].events[ei].desc = descEl.value;
+      if (locEl) sched[di].events[ei].location = locEl.value;
     }
   }
 }
@@ -1127,7 +1129,7 @@ function renderTripPage() {
         ${d.events.map(e => `
           <div class="schedule-item">
             ${e.time ? `<span class="schedule-time">${escapeHtml(e.time)}</span>` : ''}
-            <span class="schedule-desc">${escapeHtml(e.desc)}</span>
+            <span class="schedule-desc">${escapeHtml(e.desc)}${e.location ? ` <a href="${escapeHtml(e.location)}" target="_blank" rel="noopener noreferrer" style="color:var(--orange-500);font-size:12px;text-decoration:none;white-space:nowrap;">📍 Map</a>` : ''}</span>
           </div>
         `).join('')}
       </div>
@@ -1381,9 +1383,10 @@ function renderAdminPage() {
         <div style="background:var(--navy-50,#f6f8fb);border:1px solid var(--navy-100);border-radius:8px;padding:12px;margin-bottom:10px;">
           <div style="font-weight:700;font-size:14px;color:var(--navy-900);margin-bottom:8px;">${escapeHtml(day.day)}</div>
           ${day.events.map((evt, ei) => `
-            <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
               <input type="text" id="sched-time-${di}-${ei}" placeholder="e.g. 3:00 PM" value="${escapeHtml(evt.time || '')}" style="width:120px;font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;">
-              <input type="text" id="sched-desc-${di}-${ei}" placeholder="Event description" value="${escapeHtml(evt.desc || '')}" style="flex:1;font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;">
+              <input type="text" id="sched-desc-${di}-${ei}" placeholder="Event description" value="${escapeHtml(evt.desc || '')}" style="flex:1;min-width:160px;font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;">
+              <input type="url" id="sched-loc-${di}-${ei}" placeholder="Google Maps link (optional)" value="${escapeHtml(evt.location || '')}" style="flex:1;min-width:160px;font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;">
               <button onclick="removeScheduleEvent(${di},${ei})" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:16px;padding:4px;" title="Remove">&times;</button>
             </div>
           `).join('')}
