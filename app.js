@@ -1376,7 +1376,11 @@ function renderPuterBetCard(bet, myActiveWithPuter) {
         ${isClosed
           ? wasExpired
             ? `<span class="bet-status-expired">Expired — no takers</span>`
-            : `<span class="bet-status-closed">Settled</span>${bet.taker_name ? ` — was taken by ${bet.taker_name}` : ''}`
+            : bet.settle_winner === 'creator'
+              ? `<span class="bet-status-closed puter-settled-win">🤖 Puter won</span>${bet.taker_name ? ` <span style="color:#94a3b8;">vs ${bet.taker_name}</span>` : ''}`
+              : bet.settle_winner === 'taker'
+                ? `<span class="bet-status-closed puter-settled-loss">${bet.taker_name} won</span>`
+                : `<span class="bet-status-closed">Settled</span>${bet.taker_name ? ` <span style="color:#94a3b8;">— ${bet.taker_name}</span>` : ''}`
           : isTaken
             ? `<span class="bet-status-taken">✓ Taken by ${bet.taker_name}</span>`
             : canTake
@@ -1394,6 +1398,9 @@ function renderPuterBetCard(bet, myActiveWithPuter) {
         ` : ''}
         ${isAdmin && !isTaken && !isClosed ? `
           <button class="btn-delete-bet" onclick="deletePuterBet(${bet.id})">Remove</button>
+        ` : ''}
+        ${isAdmin && isClosed && !wasExpired ? `
+          <button class="btn-unsettle" onclick="unsettlePuterBet(${bet.id})">Unsettle</button>
         ` : ''}
       </div>
     </div>
@@ -1574,6 +1581,30 @@ async function settlePuterBet(betId, winner) {
   }
 }
 
+async function unsettlePuterBet(betId) {
+  if (!confirm('Reopen this Puter bet? The ledger entry will be reversed.')) return;
+  try {
+    await apiPost(`/api/puter/bets/${betId}/unsettle?viewer_id=${currentUser.id}`, {});
+    showToast('Puter bet unsettled — reopened for re-settlement.', 'success');
+    await loadBets();
+    render();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function unsettleBet(betId) {
+  if (!confirm('Reopen this bet? Both parties will need to re-settle.')) return;
+  try {
+    await apiPost(`/api/bets/${betId}/unsettle?viewer_id=${currentUser.id}`, {});
+    showToast('Bet unsettled — reopened for re-settlement.', 'success');
+    await loadBets();
+    render();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
 async function deletePuterBet(betId) {
   if (!confirm('Remove this Puter bet?')) return;
   try {
@@ -1725,6 +1756,7 @@ function renderBetCard(bet) {
         ${renderSettleUpButtons(bet, 'general')}
         ${creatorCanDelete ? `<button class="btn-delete-bet" onclick="deleteBet(${bet.id})">Delete</button>` : ''}
         ${adminCanDelete ? `<button class="btn-delete-bet" onclick="if(confirm('${bet.taker_id ? 'This bet was taken. ' : ''}Delete this bet as admin?')) deleteBet(${bet.id})" style="${bet.taker_id ? 'background:#dc2626;' : ''}">Delete</button>` : ''}
+        ${isAdmin && isClosed && bet.taker_id ? `<button class="btn-unsettle" onclick="unsettleBet(${bet.id})">Unsettle</button>` : ''}
       </div>
     </div>
   `;
@@ -1751,6 +1783,7 @@ function renderMyBetCard(bet) {
         ${renderSettleUpButtons(bet, 'creator')}
         ${canDelete ? `<button class="btn-delete-bet" onclick="deleteBet(${bet.id})">Delete</button>` : ''}
         ${adminCanDelete ? `<button class="btn-delete-bet" onclick="if(confirm('This bet was taken. Delete anyway as admin?')) deleteBet(${bet.id})" style="background:#dc2626;">Admin Delete</button>` : ''}
+        ${currentUser.is_admin && isClosed && bet.taker_id ? `<button class="btn-unsettle" onclick="unsettleBet(${bet.id})">Unsettle</button>` : ''}
       </div>
     </div>
   `;

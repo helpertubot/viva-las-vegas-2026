@@ -971,6 +971,30 @@ def void_bet(bet_id: int, viewer_id: int = 0):
     cur.close()
     return {"ok": True}
 
+@app.post("/api/bets/{bet_id}/unsettle")
+def unsettle_bet(bet_id: int, viewer_id: int = 0):
+    """Admin-only: reopen a settled bet so the outcome can be corrected."""
+    if viewer_id == 0:
+        raise HTTPException(status_code=400, detail="Must be logged in")
+    cur = get_cursor()
+    cur.execute("SELECT is_admin FROM users WHERE id = %s", (viewer_id,))
+    viewer_row = fetchone_dict(cur)
+    if not (viewer_row and viewer_row.get("is_admin", False)):
+        cur.close()
+        raise HTTPException(status_code=403, detail="Only admin can unsettle a bet")
+    cur.execute("SELECT * FROM bets WHERE id = %s", (bet_id,))
+    bet = fetchone_dict(cur)
+    if not bet:
+        cur.close()
+        raise HTTPException(status_code=404, detail="Bet not found")
+    if not bet["closed"]:
+        cur.close()
+        raise HTTPException(status_code=400, detail="Bet is not settled")
+    cur.execute("UPDATE bets SET closed = FALSE, closed_at = NULL, settle_winner = NULL, settle_proposed_by = NULL WHERE id = %s", (bet_id,))
+    db.commit()
+    cur.close()
+    return {"ok": True}
+
 @app.delete("/api/bets/{bet_id}")
 def delete_bet(bet_id: int, viewer_id: int = 0):
     cur = get_cursor()
@@ -1122,12 +1146,49 @@ def settle_puter_bet(bet_id: int, req: SettlePuterBetRequest, viewer_id: int = 0
         "INSERT INTO puter_ledger (bet_id, amount, description, balance_after) VALUES (%s, %s, %s, %s)",
         (bet_id, amount if req.winner == 'puter' else -amount, desc, new_balance)
     )
-    # Close the bet
+    # Close the bet with settle_winner recorded
     now = time.time()
-    cur.execute("UPDATE bets SET closed = TRUE, closed_at = %s WHERE id = %s", (now, bet_id))
+    settle_winner = 'creator' if req.winner == 'puter' else 'taker'
+    cur.execute("UPDATE bets SET closed = TRUE, closed_at = %s, settle_winner = %s WHERE id = %s", (now, settle_winner, bet_id))
     db.commit()
     cur.close()
     return {"ok": True, "new_balance": new_balance, "winner": req.winner}
+
+@app.post("/api/puter/bets/{bet_id}/unsettle")
+def unsettle_puter_bet(bet_id: int, viewer_id: int = 0):
+    """Admin-only: reopen a settled Puter bet and reverse the ledger entry."""
+    if viewer_id == 0:
+        raise HTTPException(status_code=400, detail="Must be logged in")
+    cur = get_cursor()
+    cur.execute("SELECT is_admin FROM users WHERE id = %s", (viewer_id,))
+    viewer_row = fetchone_dict(cur)
+    if not (viewer_row and viewer_row.get("is_admin", False)):
+        cur.close()
+        raise HTTPException(status_code=403, detail="Only admin can unsettle a Puter bet")
+    cur.execute("SELECT * FROM bets WHERE id = %s AND creator_id = %s", (bet_id, PUTER_USER_ID))
+    bet = fetchone_dict(cur)
+    if not bet:
+        cur.close()
+        raise HTTPException(status_code=404, detail="Puter bet not found")
+    if not bet["closed"]:
+        cur.close()
+        raise HTTPException(status_code=400, detail="Bet is not settled")
+    # Reverse the ledger entry for this bet
+    cur.execute("SELECT id, amount FROM puter_ledger WHERE bet_id = %s ORDER BY id DESC LIMIT 1", (bet_id,))
+    ledger_row = cur.fetchone()
+    if ledger_row:
+        cur.execute("DELETE FROM puter_ledger WHERE id = %s", (ledger_row[0],))
+        # Recalculate running balance by getting the new last entry
+        cur.execute("SELECT balance_after FROM puter_ledger ORDER BY id DESC LIMIT 1")
+        new_last = cur.fetchone()
+        new_balance = new_last[0] if new_last else PUTER_INITIAL_BANKROLL
+    else:
+        new_balance = PUTER_INITIAL_BANKROLL
+    # Reopen the bet
+    cur.execute("UPDATE bets SET closed = FALSE, closed_at = NULL, settle_winner = NULL, settle_proposed_by = NULL WHERE id = %s", (bet_id,))
+    db.commit()
+    cur.close()
+    return {"ok": True, "new_balance": new_balance}
 
 class CreatePuterBetRequest(BaseModel):
     description: str
