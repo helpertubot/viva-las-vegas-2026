@@ -77,6 +77,7 @@ let config = { entry_fee: 50, max_bets_per_user: 3, bet_reveal_timestamp: 0 };
 let leaderboardData = { leaderboard: [], championship_combined: null, games_completed: 0 };
 let tournamentResults = { results: [] };
 let liveSchedule = { games: [] };
+let allStays = [];
 
 // ===== API HELPERS =====
 async function apiGet(path) {
@@ -213,6 +214,7 @@ function renderHeader() {
         <button onclick="navigate('bracket')" class="${currentView === 'bracket' ? 'active' : ''}">My Brackets</button>
         <button onclick="navigate('bets')" class="${currentView === 'bets' ? 'active' : ''}">Bets</button>
         <button onclick="navigate('leaderboard')" class="${currentView === 'leaderboard' ? 'active' : ''}">Leaderboard</button>
+        <button onclick="navigate('trip')" class="${currentView === 'trip' ? 'active' : ''}">Trip</button>
         ${currentUser.is_admin ? `<button onclick="navigate('admin')" class="${currentView === 'admin' ? 'active' : ''}">Admin</button>` : ''}
       </nav>
       <div class="header-user">
@@ -243,6 +245,10 @@ function renderMobileNav() {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21V8m4 13V4m4 17v-9"/></svg>
         Board
       </button>
+      <button onclick="navigate('trip')" class="${currentView === 'trip' ? 'active' : ''}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        Trip
+      </button>
       ${currentUser.is_admin ? `
       <button onclick="navigate('admin')" class="${currentView === 'admin' ? 'active' : ''}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
@@ -259,6 +265,7 @@ function renderCurrentView() {
     case "view-bracket": return renderBracketPage(viewingBracketId, true);
     case "bets": return renderBetsPage();
     case "leaderboard": return renderLeaderboardPage();
+    case "trip": return renderTripPage();
     case "profile": return renderProfilePage();
     case "admin": return renderAdminPage();
     default: return renderHome();
@@ -891,6 +898,128 @@ function renderProfilePage() {
   `;
 }
 
+// ===== TRIP PAGE =====
+function renderTripPage() {
+  const myStay = allStays.find(s => s.user_id === currentUser.id);
+  const schedule = config.group_schedule || '';
+
+  // Parse schedule lines into HTML
+  const scheduleHtml = schedule ? schedule.split('\n').map(line => {
+    const trimmed = line.trim();
+    if (!trimmed) return '';
+    // Lines starting with # are headers
+    if (trimmed.startsWith('# ')) return `<div class="schedule-day">${escapeHtml(trimmed.slice(2))}</div>`;
+    return `<div class="schedule-item">${escapeHtml(trimmed)}</div>`;
+  }).join('') : '<div class="empty-state">Schedule coming soon.</div>';
+
+  return `
+    <h2 class="section-title">Trip Details</h2>
+
+    <div class="trip-section">
+      <h3>📅 Group Schedule</h3>
+      <div class="schedule-list">${scheduleHtml}</div>
+    </div>
+
+    <div class="trip-section">
+      <h3>🏨 Where Is Everyone Staying?</h3>
+      <div class="my-stay-form">
+        <h4>My Stay</h4>
+        <div class="form-row">
+          <div class="form-field">
+            <label>Hotel / Property Name</label>
+            <input type="text" id="stay-hotel" placeholder="e.g. The Venetian" value="${myStay ? escapeHtml(myStay.hotel_name) : ''}">
+          </div>
+          <div class="form-field">
+            <label>Location Link <span style="font-size:11px;color:var(--text-muted);">(Google Maps URL)</span></label>
+            <input type="url" id="stay-link" placeholder="https://maps.google.com/..." value="${myStay ? escapeHtml(myStay.hotel_link) : ''}">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label>Check-in</label>
+            <input type="date" id="stay-checkin" value="${myStay ? myStay.check_in : ''}">
+          </div>
+          <div class="form-field">
+            <label>Check-out</label>
+            <input type="date" id="stay-checkout" value="${myStay ? myStay.check_out : ''}">
+          </div>
+        </div>
+        <button class="btn-primary" style="width:auto;padding:10px 20px;font-size:13px;" onclick="saveMyStay()">Save My Stay</button>
+      </div>
+
+      ${allStays.length > 0 ? `
+        <div class="stays-grid">
+          ${allStays.map(s => {
+            const user = allUsers.find(u => u.id === s.user_id);
+            if (!user) return '';
+            const hasLink = s.hotel_link && s.hotel_link.startsWith('http');
+            const mapsSearchLink = s.hotel_name ? `https://www.google.com/maps/search/${encodeURIComponent(s.hotel_name + ' Las Vegas')}` : '';
+            const linkToUse = hasLink ? s.hotel_link : mapsSearchLink;
+            return `
+              <div class="stay-card">
+                <div class="stay-header">
+                  <div class="mini-avatar">${renderAvatar(user)}</div>
+                  <div class="stay-name">${escapeHtml(user.display_name)}</div>
+                </div>
+                ${s.hotel_name ? `
+                  <div class="stay-hotel">
+                    ${linkToUse ? `<a href="${linkToUse}" target="_blank" rel="noopener" class="stay-hotel-link">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="flex-shrink:0;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                      ${escapeHtml(s.hotel_name)}
+                    </a>` : escapeHtml(s.hotel_name)}
+                  </div>
+                ` : ''}
+                ${s.check_in || s.check_out ? `
+                  <div class="stay-dates">
+                    ${s.check_in ? formatStayDate(s.check_in) : '?'} → ${s.check_out ? formatStayDate(s.check_out) : '?'}
+                  </div>
+                ` : ''}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      ` : `<div class="empty-state" style="margin-top:16px;">No one has added their stay info yet. Be the first!</div>`}
+    </div>
+  `;
+}
+
+function formatStayDate(dateStr) {
+  if (!dateStr) return '';
+  const [y, m, d] = dateStr.split('-');
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[parseInt(m)-1]} ${parseInt(d)}`;
+}
+
+async function saveMyStay() {
+  const hotel_name = document.getElementById('stay-hotel').value;
+  const hotel_link = document.getElementById('stay-link').value;
+  const check_in = document.getElementById('stay-checkin').value;
+  const check_out = document.getElementById('stay-checkout').value;
+  if (!hotel_name && !check_in && !check_out) {
+    showToast('Fill in at least one field', 'error');
+    return;
+  }
+  try {
+    await apiPut(`/api/stays/${currentUser.id}`, { hotel_name, hotel_link, check_in, check_out });
+    showToast('Stay info saved', 'success');
+    await loadStays();
+    render();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function saveGroupSchedule() {
+  const text = document.getElementById('admin-schedule').value;
+  try {
+    await apiPost('/api/admin/settings', { key: 'group_schedule', value: text });
+    config.group_schedule = text;
+    showToast('Schedule saved', 'success');
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
 // ===== ADMIN PAGE =====
 function renderAdminPage() {
   if (!currentUser.is_admin) return `<div class="empty-state">Not authorized</div>`;
@@ -903,6 +1032,13 @@ function renderAdminPage() {
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Fetch latest game results from ESPN and update bracket scores.</p>
       <button class="btn-primary orange" style="width:auto;padding:10px 20px;font-size:13px;" onclick="refreshTournamentResults()">Refresh Results from ESPN</button>
       <span id="refresh-status" style="font-size:12px;color:var(--text-muted);margin-left:12px;"></span>
+    </div>
+
+    <div class="admin-section">
+      <h3>Group Schedule</h3>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:8px;">Edit the trip schedule. Use <code># Day Title</code> for day headers. One event per line.</p>
+      <textarea id="admin-schedule" rows="10" style="width:100%;font-size:13px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;resize:vertical;background:var(--surface);color:var(--navy-900);">${escapeHtml(config.group_schedule || '')}</textarea>
+      <button class="btn-primary" style="width:auto;padding:10px 20px;font-size:13px;margin-top:8px;" onclick="saveGroupSchedule()">Save Schedule</button>
     </div>
 
     <div class="admin-section">
@@ -1006,6 +1142,9 @@ function navigate(view) {
   }
   if (view === 'leaderboard') {
     loadTournamentData().then(() => render());
+  }
+  if (view === 'trip') {
+    loadStays().then(() => render());
   }
 }
 
@@ -1358,6 +1497,14 @@ async function loadLiveSchedule() {
 
 async function loadBets() {
   betData = await apiGet(`/api/bets?viewer_id=${currentUser ? currentUser.id : 0}`);
+}
+
+async function loadStays() {
+  try {
+    allStays = await apiGet("/api/stays");
+  } catch (e) {
+    allStays = [];
+  }
 }
 
 // ===== EVENT BINDING =====

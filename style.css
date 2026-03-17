@@ -1639,3 +1639,124 @@ img { display: block; max-width: 100%; }
   font-weight: 600;
   margin-top: 4px;
 }
+
+/* === TRIP PAGE === */
+.trip-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+  margin-bottom: 20px;
+}
+
+.trip-section h3 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--navy-900);
+  margin-bottom: 16px;
+}
+
+.schedule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.schedule-day {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--orange-600);
+  margin-top: 12px;
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--navy-100);
+}
+
+.schedule-day:first-child {
+  margin-top: 0;
+}
+
+.schedule-item {
+  font-size: 13px;
+  color: var(--navy-700);
+  padding: 4px 0 4px 16px;
+  position: relative;
+}
+
+.schedule-item::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 11px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--navy-300);
+}
+
+.my-stay-form {
+  background: var(--navy-50, #f6f8fb);
+  border: 1px solid var(--navy-100);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.my-stay-form h4 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--navy-800);
+  margin-bottom: 12px;
+}
+
+.stays-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.stay-card {
+  background: var(--navy-50, #f6f8fb);
+  border: 1px solid var(--navy-100);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.stay-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.stay-name {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--navy-900);
+}
+
+.stay-hotel {
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.stay-hotel-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #3D95CE;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.stay-hotel-link:hover {
+  text-decoration: underline;
+}
+
+.stay-dates {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}

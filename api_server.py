@@ -144,6 +144,19 @@ def init_db(conn):
     cur.execute("""
         ALTER TABLE brackets ADD COLUMN IF NOT EXISTS tiebreaker_score INTEGER DEFAULT NULL
     """)
+    # Stay info table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS stay_info (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            hotel_name TEXT NOT NULL DEFAULT '',
+            hotel_link TEXT NOT NULL DEFAULT '',
+            check_in TEXT NOT NULL DEFAULT '',
+            check_out TEXT NOT NULL DEFAULT '',
+            updated_at DOUBLE PRECISION NOT NULL,
+            UNIQUE(user_id)
+        );
+    """)
     conn.commit()
     cur.close()
     logger.info("DB tables initialized")
@@ -578,7 +591,8 @@ def get_config():
         "bet_reveal_timestamp": BET_REVEAL_TIMESTAMP,
         "entry_fee": 50,
         "max_bets_per_user": 3,
-        "banner_position": int(settings.get("banner_position", "30"))
+        "banner_position": int(settings.get("banner_position", "30")),
+        "group_schedule": settings.get("group_schedule", "")
     }
 
 class UpdateSettingRequest(BaseModel):
@@ -587,7 +601,7 @@ class UpdateSettingRequest(BaseModel):
 
 @app.post("/api/admin/settings")
 def update_setting(req: UpdateSettingRequest):
-    allowed_keys = {"banner_position"}
+    allowed_keys = {"banner_position", "group_schedule"}
     if req.key not in allowed_keys:
         raise HTTPException(400, "Invalid setting key")
     cur = get_cursor()
@@ -598,6 +612,63 @@ def update_setting(req: UpdateSettingRequest):
     db.commit()
     cur.close()
     return {"ok": True}
+
+# ---- Stay Info ----
+class SaveStayRequest(BaseModel):
+    hotel_name: str = ''
+    hotel_link: str = ''
+    check_in: str = ''
+    check_out: str = ''
+
+@app.get("/api/stays")
+def list_stays():
+    try:
+        cur = get_cursor()
+        cur.execute("""
+            SELECT s.*, u.display_name, u.avatar_data
+            FROM stay_info s JOIN users u ON s.user_id = u.id
+            ORDER BY u.display_name
+        """)
+        rows = fetchall_dict(cur)
+        cur.close()
+        return rows
+    except Exception as e:
+        logger.error(f"LIST_STAYS ERROR: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/stays/{user_id}")
+def save_stay(user_id: int, req: SaveStayRequest):
+    try:
+        now = time.time()
+        cur = get_cursor()
+        cur.execute("""
+            INSERT INTO stay_info (user_id, hotel_name, hotel_link, check_in, check_out, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id) DO UPDATE SET
+                hotel_name = EXCLUDED.hotel_name,
+                hotel_link = EXCLUDED.hotel_link,
+                check_in = EXCLUDED.check_in,
+                check_out = EXCLUDED.check_out,
+                updated_at = EXCLUDED.updated_at
+        """, (user_id, req.hotel_name.strip(), req.hotel_link.strip(), req.check_in.strip(), req.check_out.strip(), now))
+        db.commit()
+        cur.close()
+        return {"ok": True}
+    except Exception as e:
+        logger.error(f"SAVE_STAY ERROR: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/group-schedule")
+def get_group_schedule():
+    cur = get_cursor()
+    cur.execute("SELECT value FROM site_settings WHERE key = 'group_schedule'")
+    row = cur.fetchone()
+    cur.close()
+    return {"schedule": row[0] if row else ""}
 
 # ---- Tournament / ESPN ----
 ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard"
