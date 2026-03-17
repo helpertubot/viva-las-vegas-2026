@@ -74,6 +74,7 @@ let viewingUserId = null;
 let viewingBracketId = null;
 let betData = { bets: [], revealed: false, reveal_time: 0, bets_on_count: {} };
 let puterData = { bets: [], balance: 500, initial_bankroll: 500, ledger: [] };
+let puterPayouts = { payouts: [], puter_balance: 500, initial_bankroll: 500 };
 const PUTER_USER_ID = 12;
 let config = { entry_fee: 50, max_bets_per_user: 3, bet_reveal_timestamp: 0 };
 let leaderboardData = { leaderboard: [], championship_combined: null, games_completed: 0 };
@@ -1035,6 +1036,8 @@ function renderPuterBetsSection() {
         </div>
       ` : ''}
 
+      ${renderPuterScoreboard()}
+
       ${isAdmin ? renderPuterAdminControls() : ''}
     </div>
   `;
@@ -1082,6 +1085,63 @@ function renderPuterBetCard(bet, myActiveWithPuter) {
           <button class="btn-delete-bet" onclick="deletePuterBet(${bet.id})">Remove</button>
         ` : ''}
       </div>
+    </div>
+  `;
+}
+
+function renderPuterScoreboard() {
+  const payouts = puterPayouts.payouts || [];
+  if (payouts.length === 0) return '';
+
+  // Sort by net descending (best vs Puter first = most negative net = Paul owes them most)
+  const sorted = [...payouts].sort((a, b) => a.net - b.net);
+
+  const rows = sorted.map((p, i) => {
+    const isMe = currentUser && p.user_id === currentUser.id;
+    const netAbs = Math.abs(p.net);
+    const isWinning = p.net < 0; // negative net = Puter lost = person is winning
+    const isLosing = p.net > 0;
+    const netLabel = isWinning
+      ? `<span style="color:#4ade80;">+$${netAbs.toFixed(0)}</span>`
+      : isLosing
+        ? `<span style="color:#f87171;">-$${netAbs.toFixed(0)}</span>`
+        : `<span style="color:#94a3b8;">Even</span>`;
+    const medal = i === 0 && isWinning ? ' 👑' : '';
+    const highlight = isMe ? 'background:rgba(99,102,241,0.15);' : '';
+    return `
+      <tr style="${highlight}">
+        <td style="padding:6px 10px;font-size:13px;">${p.name}${medal}</td>
+        <td style="padding:6px 10px;font-size:13px;text-align:center;">${p.total_bets}</td>
+        <td style="padding:6px 10px;font-size:13px;text-align:right;font-weight:600;">${netLabel}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const puterBalance = puterPayouts.puter_balance || 500;
+  const puterPnl = puterBalance - (puterPayouts.initial_bankroll || 500);
+  const puterPnlLabel = puterPnl >= 0
+    ? `<span style="color:#4ade80;">+$${puterPnl.toFixed(0)}</span>`
+    : `<span style="color:#f87171;">-$${Math.abs(puterPnl).toFixed(0)}</span>`;
+
+  return `
+    <div style="margin-top:16px; padding:14px; background:rgba(255,255,255,0.03); border-radius:var(--radius-md); border:1px solid #334155;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <div style="font-size:14px; font-weight:700; color:#e2e8f0;">📊 Scoreboard vs Puter</div>
+        <div style="font-size:12px; color:#94a3b8;">Puter's bankroll: $${puterBalance.toFixed(0)} (${puterPnlLabel})</div>
+      </div>
+      <table style="width:100%; border-collapse:collapse;">
+        <thead>
+          <tr style="border-bottom:1px solid #334155;">
+            <th style="padding:6px 10px;font-size:11px;text-align:left;color:#94a3b8;font-weight:600;text-transform:uppercase;">Player</th>
+            <th style="padding:6px 10px;font-size:11px;text-align:center;color:#94a3b8;font-weight:600;text-transform:uppercase;">Bets</th>
+            <th style="padding:6px 10px;font-size:11px;text-align:right;color:#94a3b8;font-weight:600;text-transform:uppercase;">vs Puter</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+      <div style="margin-top:8px; font-size:11px; color:#64748b; text-align:center;">Green = winning against Puter. Red = Puter's got your number.</div>
     </div>
   `;
 }
@@ -2282,6 +2342,11 @@ async function loadBets() {
     puterData = await apiGet('/api/puter/bets');
   } catch(e) {
     puterData = { bets: [], balance: 500, initial_bankroll: 500, ledger: [] };
+  }
+  try {
+    puterPayouts = await apiGet('/api/puter/payouts');
+  } catch(e) {
+    puterPayouts = { payouts: [], puter_balance: 500, initial_bankroll: 500 };
   }
 }
 

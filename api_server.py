@@ -1016,6 +1016,47 @@ def create_puter_bet(req: CreatePuterBetRequest, viewer_id: int = 0):
     cur.close()
     return {"id": bet_id, "bet_category": category}
 
+@app.get("/api/puter/payouts")
+def puter_payouts():
+    """Get per-person payout summary for all settled Puter bets."""
+    cur = get_cursor()
+    # For each settled Puter bet, calculate what each taker owes or is owed
+    # Positive amount in ledger = Puter won = taker owes Paul
+    # Negative amount in ledger = Puter lost = Paul owes taker
+    cur.execute("""
+        SELECT u.id, u.display_name,
+            SUM(CASE WHEN pl.amount > 0 THEN pl.amount ELSE 0 END) as taker_owes,
+            SUM(CASE WHEN pl.amount < 0 THEN ABS(pl.amount) ELSE 0 END) as paul_owes,
+            SUM(pl.amount) as net_puter,
+            COUNT(*) as total_bets
+        FROM puter_ledger pl
+        JOIN bets b ON pl.bet_id = b.id
+        JOIN users u ON b.taker_id = u.id
+        GROUP BY u.id, u.display_name
+        ORDER BY u.display_name
+    """)
+    rows = fetchall_dict(cur)
+    # Get current balance
+    cur.execute("SELECT balance_after FROM puter_ledger ORDER BY id DESC LIMIT 1")
+    bal_row = cur.fetchone()
+    balance = bal_row[0] if bal_row else 500.0
+    cur.close()
+    # net_puter > 0 means Puter won net => taker owes Paul that amount
+    # net_puter < 0 means Puter lost net => Paul owes taker that amount
+    payouts = []
+    for r in rows:
+        net = r["net_puter"]  # from Puter's perspective
+        payouts.append({
+            "user_id": r["id"],
+            "name": r["display_name"],
+            "total_bets": r["total_bets"],
+            "they_owe_paul": round(r["taker_owes"], 2),
+            "paul_owes_them": round(r["paul_owes"], 2),
+            "net": round(net, 2),  # positive = they owe Paul, negative = Paul owes them
+            "summary": f"They owe Paul ${round(net, 2)}" if net > 0 else f"Paul owes them ${round(abs(net), 2)}" if net < 0 else "Even"
+        })
+    return {"payouts": payouts, "puter_balance": balance, "initial_bankroll": 500.0}
+
 @app.get("/api/config")
 def get_config():
     cur = get_cursor()
