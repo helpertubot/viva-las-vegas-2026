@@ -362,6 +362,29 @@ img { display: block; max-width: 100%; }
   letter-spacing: -0.02em;
 }
 
+.pot-payout {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pot-payout span {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.pot-payout-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
 /* === VENMO BANNER === */
 .venmo-banner {
   display: flex;

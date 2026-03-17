@@ -313,6 +313,9 @@ function renderHome() {
   const submittedBrackets = allBrackets.filter(b => b.submitted).length;
   const totalBrackets = allBrackets.length;
   const potSize = submittedBrackets * config.entry_fee;
+  const payout1 = Math.round(potSize * 0.70);
+  const payout2 = Math.round(potSize * 0.20);
+  const payout3 = Math.round(potSize * 0.10);
 
   // Build best score per user from leaderboard
   const bestScoreByUser = {};
@@ -328,6 +331,12 @@ function renderHome() {
       <div class="stat-card">
         <div class="stat-label">Pot Size</div>
         <div class="stat-value">$${potSize}</div>
+        ${potSize > 0 ? `<div class="pot-payout">
+          <span>🥇 $${payout1}</span>
+          <span>🥈 $${payout2}</span>
+          <span>🥉 $${payout3}</span>
+        </div>
+        <div class="pot-payout-label">70 / 20 / 10 split</div>` : ''}
       </div>
       <div class="stat-card">
         <div class="stat-label">Brackets Submitted</div>
@@ -1013,6 +1022,10 @@ function renderProfilePage() {
   const userBets = betData.bets.filter(b => b.about_user_id === user.id);
 
   const isOwnProfile = user.id === currentUser.id;
+  const now = Date.now() / 1000;
+  const betsRevealed = now >= config.bet_reveal_timestamp;
+  // Hide bet info about yourself until reveal
+  const showBetsAboutUser = !isOwnProfile || betsRevealed;
 
   return `
     <button class="btn-back" onclick="navigate('home')">← Back</button>
@@ -1023,7 +1036,7 @@ function renderProfilePage() {
         ${user.bio ? `<div class="profile-bio">${escapeHtml(user.bio)}</div>` : (isOwnProfile ? '<div class="profile-bio" style="color:var(--text-muted);font-style:italic;">No bio yet</div>' : '')}
         <div class="profile-stats">
           <div class="profile-stat"><strong>${userBrackets.length}</strong> bracket${userBrackets.length !== 1 ? 's' : ''} (${submittedCount} submitted)</div>
-          <div class="profile-stat"><strong>${userBets.length}</strong> bets about them</div>
+          ${showBetsAboutUser ? `<div class="profile-stat"><strong>${userBets.length}</strong> bets about them</div>` : ''}
         </div>
       </div>
     </div>
@@ -1109,7 +1122,7 @@ function renderProfilePage() {
     </div>
     ` : ''}
 
-    ${userBets.length > 0 ? `
+    ${showBetsAboutUser ? (userBets.length > 0 ? `
     <div class="bets-section">
       <h3>Bets about ${user.display_name}</h3>
       ${userBets.map(b => renderBetCard(b)).join("")}
@@ -1118,6 +1131,12 @@ function renderProfilePage() {
     <div class="bets-section">
       <h3>Bets about ${user.display_name}</h3>
       <div class="empty-state">No bets about this member yet.</div>
+    </div>
+    `) : `
+    <div class="bets-section">
+      <div class="reveal-banner" style="margin:0;">
+        <span>Bets about you are hidden until the reveal</span>
+      </div>
     </div>
     `}
   `;

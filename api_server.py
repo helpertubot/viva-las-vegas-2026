@@ -608,10 +608,13 @@ def list_bets(viewer_id: Optional[int] = None):
             continue
         results.append(d)
 
-    # Count bets on each user
+    # Count bets on each user (exclude viewer's own count if not revealed)
     cur.execute("SELECT about_user_id, COUNT(*) as c FROM bets WHERE about_user_id IS NOT NULL GROUP BY about_user_id")
     on_rows = fetchall_dict(cur)
     bets_on_count = {r["about_user_id"]: r["c"] for r in on_rows}
+    # Hide the viewer's own bet count before reveal so they can't see how many bets are about them
+    if not revealed and viewer_id and viewer_id in bets_on_count:
+        del bets_on_count[viewer_id]
     cur.close()
 
     return {"bets": results, "revealed": revealed, "reveal_time": BET_REVEAL_TIMESTAMP, "bets_on_count": bets_on_count}
