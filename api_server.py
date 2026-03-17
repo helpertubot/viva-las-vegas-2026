@@ -293,8 +293,12 @@ class AddUserRequest(BaseModel):
 class UpdateAvatarRequest(BaseModel):
     user_id: int
 
+class MagicLinkRequest(BaseModel):
+    email: str
+
 # ---- Session tokens (in-memory) ----
 active_sessions = {}  # token -> user_id
+magic_links = {}  # token -> {"user_id": int, "expires": float}
 
 # ---- Auth (username + password) ----
 @app.post("/api/login")
@@ -342,6 +346,111 @@ def restore_session(token: str = ""):
     except Exception as e:
         logger.error(f"SESSION RESTORE ERROR: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# ---- Magic Link Login ----
+@app.post("/api/magic-link")
+def request_magic_link(req: MagicLinkRequest):
+    """Generate a magic login link and email it to the user."""
+    try:
+        email = req.email.strip().lower()
+        cur = get_cursor()
+        cur.execute("SELECT id, email, display_name FROM users WHERE LOWER(email) = %s", (email,))
+        user = fetchone_dict(cur)
+        cur.close()
+        if not user:
+            # Don't reveal if email exists or not
+            return {"ok": True, "message": "If that email is registered, a login link has been sent."}
+        # Generate token valid for 15 minutes
+        token = secrets.token_urlsafe(48)
+        magic_links[token] = {"user_id": user["id"], "expires": time.time() + 900}
+        # Build the magic link URL
+        base_url = os.environ.get("BASE_URL", "https://viva-las-vegas-2026.onrender.com")
+        magic_url = f"{base_url}?magic={token}"
+        # Send email
+        _send_magic_email(user["email"], user["display_name"], magic_url)
+        logger.info(f"Magic link generated for {email}")
+        return {"ok": True, "message": "If that email is registered, a login link has been sent."}
+    except Exception as e:
+        logger.error(f"MAGIC LINK ERROR: {e}")
+        logger.error(traceback.format_exc())
+        # Still return success to not leak info
+        return {"ok": True, "message": "If that email is registered, a login link has been sent."}
+
+@app.get("/api/magic-login")
+def magic_login(token: str = ""):
+    """Validate a magic link token and create a session."""
+    if not token or token not in magic_links:
+        raise HTTPException(status_code=401, detail="Invalid or expired link")
+    link_data = magic_links[token]
+    if time.time() > link_data["expires"]:
+        del magic_links[token]
+        raise HTTPException(status_code=401, detail="Link has expired. Please request a new one.")
+    user_id = link_data["user_id"]
+    # Clean up used token
+    del magic_links[token]
+    try:
+        cur = get_cursor()
+        cur.execute("SELECT id, email, username, display_name, avatar_data, is_admin, COALESCE(bio, '') as bio FROM users WHERE id = %s", (user_id,))
+        user = fetchone_dict(cur)
+        cur.close()
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        # Create session
+        session_token = secrets.token_urlsafe(32)
+        active_sessions[session_token] = user["id"]
+        return {"user": user, "session_token": session_token}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"MAGIC LOGIN ERROR: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def _send_magic_email(to_email: str, display_name: str, magic_url: str):
+    """Send a magic login link via SMTP."""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    smtp_user = os.environ.get("SMTP_USER", "")
+    smtp_pass = os.environ.get("SMTP_PASS", "")
+    smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+    smtp_from = os.environ.get("SMTP_FROM", smtp_user)
+    if not smtp_user or not smtp_pass:
+        logger.warning("SMTP not configured — magic link email not sent. Link: " + magic_url)
+        return
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "Your Viva Las Vegas Login Link"
+    msg["From"] = f"Viva Las Vegas 2026 <{smtp_from}>"
+    msg["To"] = to_email
+    text = f"""Hey {display_name},
+
+Here's your magic login link for Viva Las Vegas 2026:
+
+{magic_url}
+
+This link expires in 15 minutes. If you didn't request this, just ignore it.
+
+- The Pool"""
+    html = f"""\
+<html><body style="font-family:sans-serif;background:#f1f5f9;padding:20px;">
+<div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+  <h2 style="color:#1a2744;margin-top:0;">&#127922; Viva Las Vegas 2026</h2>
+  <p>Hey <strong>{display_name}</strong>,</p>
+  <p>Click below to log in — no password needed:</p>
+  <a href="{magic_url}" style="display:inline-block;background:#1a2744;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:bold;margin:16px 0;">Log In Now</a>
+  <p style="color:#64748b;font-size:13px;">This link expires in 15 minutes. If you didn't request this, just ignore it.</p>
+</div>
+</body></html>"""
+    msg.attach(MIMEText(text, "plain"))
+    msg.attach(MIMEText(html, "html"))
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_from, to_email, msg.as_string())
+        logger.info(f"Magic link email sent to {to_email}")
+    except Exception as e:
+        logger.error(f"Failed to send magic link email: {e}")
 
 # ---- Users ----
 @app.get("/api/users")
