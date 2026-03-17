@@ -182,7 +182,6 @@ function renderAvatar(user, sizeClass = "") {
 
 // ===== RENDER ENGINE =====
 let sessionChecked = false;
-let loginView = 'login'; // 'login' or 'forgot'
 function render() {
   const app = document.getElementById("app");
   if (!currentUser) {
@@ -210,9 +209,6 @@ function render() {
 }
 
 function renderLogin() {
-  if (loginView === 'forgot') {
-    return renderForgotPassword();
-  }
   return `
     <div class="login-page">
       <div class="login-card">
@@ -239,63 +235,12 @@ function renderLogin() {
           <button class="btn-primary" onclick="doLogin()">Enter the Pool</button>
           <div id="login-error" style="display:none" class="login-error"></div>
           <div class="forgot-link-wrap">
-            <a href="#" class="forgot-link" onclick="event.preventDefault(); loginView='forgot'; render();">Forgot Password?</a>
+            <span class="forgot-hint">Forgot your password? Text Paul to reset it</span>
           </div>
         </div>
       </div>
     </div>
   `;
-}
-
-function renderForgotPassword() {
-  return `
-    <div class="login-page">
-      <div class="login-card">
-        <h1 style="font-size:24px;margin-bottom:4px;">🔑 Forgot Password?</h1>
-        <p class="subtitle" style="margin-bottom:20px;">Enter your email and we'll send you a magic login link</p>
-        <div>
-          <div class="input-group">
-            <label for="forgot-email">Email Address</label>
-            <input type="email" id="forgot-email" placeholder="your@email.com" autocapitalize="none" autocorrect="off"
-              onkeydown="if(event.key==='Enter'){event.preventDefault();requestMagicLink()}">
-          </div>
-          <button class="btn-primary" onclick="requestMagicLink()">Send Magic Link</button>
-          <div id="forgot-message" style="display:none"></div>
-          <div class="forgot-link-wrap">
-            <a href="#" class="forgot-link" onclick="event.preventDefault(); loginView='login'; render();">← Back to Login</a>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-async function requestMagicLink() {
-  const emailInput = document.getElementById('forgot-email');
-  const msgEl = document.getElementById('forgot-message');
-  if (!emailInput || !msgEl) return;
-  const email = emailInput.value.trim();
-  if (!email) {
-    msgEl.className = 'forgot-message error';
-    msgEl.textContent = 'Please enter your email address';
-    msgEl.style.display = 'block';
-    return;
-  }
-  // Disable button while sending
-  const btn = emailInput.parentElement.parentElement.querySelector('.btn-primary');
-  if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
-  try {
-    const res = await apiPost('/api/magic-link', { email });
-    msgEl.className = 'forgot-message success';
-    msgEl.textContent = res.message || 'If that email is registered, a login link has been sent. Check your inbox!';
-    msgEl.style.display = 'block';
-    emailInput.disabled = true;
-  } catch (err) {
-    msgEl.className = 'forgot-message success';
-    msgEl.textContent = 'If that email is registered, a login link has been sent.';
-    msgEl.style.display = 'block';
-  }
-  if (btn) { btn.disabled = true; btn.textContent = 'Link Sent ✓'; }
 }
 
 function renderHeader() {
@@ -2158,37 +2103,6 @@ function escapeHtml(str) {
 
 // ===== INIT =====
 async function init() {
-  // Check for magic login token in URL
-  const urlParams = new URLSearchParams(window.location.search);
-  const magicToken = urlParams.get('magic');
-  if (magicToken) {
-    // Clean the URL so token doesn't linger
-    window.history.replaceState({}, document.title, window.location.pathname);
-    sessionChecked = true;
-    render(); // show loading state
-    try {
-      const res = await apiGet('/api/magic-login?token=' + encodeURIComponent(magicToken));
-      currentUser = res.user;
-      if (res.session_token) setSessionToken(res.session_token);
-      await loadAllData();
-      currentBracketId = null;
-      currentPicks = {};
-      render();
-    } catch (err) {
-      sessionChecked = true;
-      loginView = 'login';
-      render();
-      // Show error on login page after render
-      setTimeout(() => {
-        const errEl = document.getElementById('login-error');
-        if (errEl) {
-          errEl.textContent = err.message || 'Magic link expired or invalid. Please try again.';
-          errEl.style.display = 'block';
-        }
-      }, 50);
-    }
-    return; // skip normal session restore
-  }
   // Show loading spinner if we have a session token (avoids login flash)
   render();
   // Try restoring session from cookie
