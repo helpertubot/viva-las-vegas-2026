@@ -1079,6 +1079,33 @@ img { display: block; max-width: 100%; }
 
 .btn-delete-bet:hover { background: var(--red-500); color: white; }
 
+.btn-close-bet {
+  padding: 6px 14px;
+  background: var(--blue-100, #dbeafe);
+  color: var(--blue-700, #1d4ed8);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  transition: all var(--transition);
+  cursor: pointer;
+  border: none;
+}
+
+.btn-close-bet:hover { background: var(--blue-600, #2563eb); color: white; }
+
+.bet-card.bet-closed {
+  opacity: 0.6;
+}
+
+.bet-status-closed {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--blue-600, #2563eb);
+  background: var(--blue-100, #dbeafe);
+  padding: 3px 10px;
+  border-radius: 12px;
+}
+
 /* Create bet form */
 .create-bet-form {
   background: var(--navy-50);

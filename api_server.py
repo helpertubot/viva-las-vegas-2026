@@ -117,6 +117,8 @@ def init_db(conn):
             amount DOUBLE PRECISION NOT NULL,
             taker_id INTEGER REFERENCES users(id),
             taken_at DOUBLE PRECISION,
+            closed BOOLEAN NOT NULL DEFAULT FALSE,
+            closed_at DOUBLE PRECISION,
             created_at DOUBLE PRECISION NOT NULL
         );
     """)
@@ -164,6 +166,9 @@ def init_db(conn):
     # Arrival/departure columns on stay_info
     cur.execute("ALTER TABLE stay_info ADD COLUMN IF NOT EXISTS arrival TEXT DEFAULT ''")
     cur.execute("ALTER TABLE stay_info ADD COLUMN IF NOT EXISTS departure TEXT DEFAULT ''")
+    # Closed bet columns
+    cur.execute("ALTER TABLE bets ADD COLUMN IF NOT EXISTS closed BOOLEAN NOT NULL DEFAULT FALSE")
+    cur.execute("ALTER TABLE bets ADD COLUMN IF NOT EXISTS closed_at DOUBLE PRECISION")
 
     conn.commit()
     cur.close()
@@ -608,8 +613,8 @@ def list_bets(viewer_id: Optional[int] = None):
             continue
         results.append(d)
 
-    # Count bets on each user (exclude viewer's own count if not revealed)
-    cur.execute("SELECT about_user_id, COUNT(*) as c FROM bets WHERE about_user_id IS NOT NULL GROUP BY about_user_id")
+    # Count active (non-closed) bets on each user (exclude viewer's own count if not revealed)
+    cur.execute("SELECT about_user_id, COUNT(*) as c FROM bets WHERE about_user_id IS NOT NULL AND closed = FALSE GROUP BY about_user_id")
     on_rows = fetchall_dict(cur)
     bets_on_count = {r["about_user_id"]: r["c"] for r in on_rows}
     # Hide the viewer's own bet count before reveal so they can't see how many bets are about them
@@ -631,17 +636,17 @@ def create_bet(req: CreateBetRequest, viewer_id: int = 0):
         raise HTTPException(status_code=400, detail="Cannot bet about yourself")
 
     cur = get_cursor()
-    cur.execute("SELECT COUNT(*) as c FROM bets WHERE creator_id = %s", (viewer_id,))
+    cur.execute("SELECT COUNT(*) as c FROM bets WHERE creator_id = %s AND closed = FALSE", (viewer_id,))
     count = cur.fetchone()[0]
     if count >= 3:
         cur.close()
-        raise HTTPException(status_code=400, detail="You can only create 3 bets")
+        raise HTTPException(status_code=400, detail="You can only have 3 active bets")
 
-    cur.execute("SELECT COUNT(*) as c FROM bets WHERE about_user_id = %s", (req.about_user_id,))
+    cur.execute("SELECT COUNT(*) as c FROM bets WHERE about_user_id = %s AND closed = FALSE", (req.about_user_id,))
     on_count = cur.fetchone()[0]
     if on_count >= 3:
         cur.close()
-        raise HTTPException(status_code=400, detail="Max 3 bets can be placed about this person")
+        raise HTTPException(status_code=400, detail="Max 3 active bets can be placed about this person")
 
     now = time.time()
     cur.execute(
@@ -675,6 +680,34 @@ def take_bet(bet_id: int, viewer_id: int = 0):
     
     now = time.time()
     cur.execute("UPDATE bets SET taker_id = %s, taken_at = %s WHERE id = %s", (viewer_id, now, bet_id))
+    db.commit()
+    cur.close()
+    return {"ok": True}
+
+@app.post("/api/bets/{bet_id}/close")
+def close_bet(bet_id: int, viewer_id: int = 0):
+    """Creator can close/settle a bet, freeing up slots for new bets."""
+    if viewer_id == 0:
+        raise HTTPException(status_code=400, detail="Must be logged in")
+    cur = get_cursor()
+    # Check if viewer is admin
+    cur.execute("SELECT is_admin FROM users WHERE id = %s", (viewer_id,))
+    viewer_row = fetchone_dict(cur)
+    is_admin = viewer_row and viewer_row.get("is_admin", False)
+
+    cur.execute("SELECT * FROM bets WHERE id = %s", (bet_id,))
+    bet = fetchone_dict(cur)
+    if not bet:
+        cur.close()
+        raise HTTPException(status_code=404, detail="Bet not found")
+    if bet["creator_id"] != viewer_id and not is_admin:
+        cur.close()
+        raise HTTPException(status_code=403, detail="Only the bet creator or admin can close a bet")
+    if bet["closed"]:
+        cur.close()
+        raise HTTPException(status_code=400, detail="Bet is already closed")
+    now = time.time()
+    cur.execute("UPDATE bets SET closed = TRUE, closed_at = %s WHERE id = %s", (now, bet_id))
     db.commit()
     cur.close()
     return {"ok": True}
