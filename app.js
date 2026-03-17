@@ -1258,16 +1258,73 @@ function renderCreateBetForm() {
   `;
 }
 
+function renderSettleUpButtons(bet, viewAs) {
+  // viewAs: 'general' (viewing someone else's bet), 'creator' (my bets section), 'taker'
+  const isCreator = bet.creator_id === currentUser.id;
+  const isTaker = bet.taker_id === currentUser.id;
+  const isAdmin = currentUser.is_admin;
+  const isClosed = bet.closed;
+  const isTaken = !!bet.taker_id;
+  const hasPendingProposal = bet.settle_proposed_by != null;
+  const iProposed = bet.settle_proposed_by === currentUser.id;
+  const isVoided = bet.settle_winner === 'void';
+
+  if (!isTaken || isClosed) return '';
+  if (!isCreator && !isTaker && !isAdmin) return '';
+
+  let html = '';
+
+  // Show pending proposal status
+  if (hasPendingProposal && !iProposed && (isCreator || isTaker)) {
+    const proposerName = bet.settle_proposed_by === bet.creator_id ? bet.creator_name : bet.taker_name;
+    const claimedWinner = bet.settle_winner === 'creator' ? bet.creator_name : bet.taker_name;
+    html += `<div style="margin-top:6px;padding:8px;background:rgba(251,191,36,0.1);border:1px solid #92400e;border-radius:6px;font-size:12px;">
+      <div style="color:#fbbf24;font-weight:600;margin-bottom:4px;">⚡ Settle-Up Pending</div>
+      <div style="color:#e2e8f0;">${proposerName} says <strong>${claimedWinner}</strong> won.</div>
+      <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn-close-bet" onclick="settleUp(${bet.id}, '${bet.settle_winner}')" style="background:#16a34a;color:#fff;font-size:11px;padding:4px 10px;">Agree</button>
+        <button class="btn-close-bet" onclick="settleUp(${bet.id}, '${bet.settle_winner === 'creator' ? 'taker' : 'creator'}')" style="background:#dc2626;color:#fff;font-size:11px;padding:4px 10px;">Disagree — I won</button>
+      </div>
+    </div>`;
+  } else if (hasPendingProposal && iProposed) {
+    const claimedWinner = bet.settle_winner === 'creator' ? bet.creator_name : bet.taker_name;
+    html += `<div style="margin-top:6px;font-size:11px;color:#fbbf24;font-style:italic;">⏳ You proposed ${claimedWinner} won — waiting for the other side to confirm.</div>`;
+  } else if (!hasPendingProposal && (isCreator || isTaker)) {
+    html += `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+      <span style="font-size:11px;color:#94a3b8;">Settle Up:</span>
+      <button class="btn-close-bet" onclick="settleUp(${bet.id}, 'creator')" style="background:#16a34a;color:#fff;font-size:11px;padding:4px 10px;">${bet.creator_name} Won</button>
+      <button class="btn-close-bet" onclick="settleUp(${bet.id}, 'taker')" style="background:#3b82f6;color:#fff;font-size:11px;padding:4px 10px;">${bet.taker_name} Won</button>
+    </div>`;
+  }
+
+  // Admin override — always visible to admin on taken, open bets
+  if (isAdmin) {
+    html += `<div style="margin-top:6px;padding:6px;border-top:1px dashed #475569;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+      <span style="font-size:10px;color:#64748b;">Admin:</span>
+      <button class="btn-close-bet" onclick="settleUp(${bet.id}, 'creator')" style="font-size:10px;padding:3px 8px;background:#16a34a;color:#fff;">${bet.creator_name} Wins</button>
+      <button class="btn-close-bet" onclick="settleUp(${bet.id}, 'taker')" style="font-size:10px;padding:3px 8px;background:#3b82f6;color:#fff;">${bet.taker_name} Wins</button>
+      <button class="btn-close-bet" onclick="voidBet(${bet.id})" style="font-size:10px;padding:3px 8px;background:#6b7280;color:#fff;">Void Bet</button>
+    </div>`;
+  }
+
+  return html;
+}
+
+function renderBetSettledStatus(bet) {
+  if (!bet.closed) return '';
+  if (bet.settle_winner === 'void') return `<span class="bet-status-closed" style="color:#fbbf24;">Voided</span>`;
+  if (bet.settle_winner === 'creator') return `<span class="bet-status-closed">Settled — ${bet.creator_name} won</span>`;
+  if (bet.settle_winner === 'taker') return `<span class="bet-status-closed">Settled — ${bet.taker_name} won</span>`;
+  return `<span class="bet-status-closed">Settled</span>`;
+}
+
 function renderBetCard(bet) {
   const isClosed = bet.closed;
   const canTake = !isClosed && !bet.taker_id && bet.creator_id !== currentUser.id && (!bet.about_user_id || bet.about_user_id !== currentUser.id);
   const isCreator = bet.creator_id === currentUser.id;
   const isAdmin = currentUser.is_admin;
-  // Creator can delete their own untaken bets; admin can delete any bet
   const creatorCanDelete = !isClosed && isCreator && !bet.taker_id;
   const adminCanDelete = !isClosed && isAdmin && !creatorCanDelete;
-  // Creator can close a taken bet (or admin can)
-  const canClose = !isClosed && bet.taker_id && (isCreator || isAdmin);
   return `
     <div class="bet-card${isClosed ? ' bet-closed' : ''}">
       <div class="bet-header">
@@ -1278,14 +1335,14 @@ function renderBetCard(bet) {
       <div class="bet-footer">
         <span class="bet-creator">Created by ${bet.creator_name}</span>
         ${isClosed
-          ? `<span class="bet-status-closed">Settled</span>`
+          ? renderBetSettledStatus(bet)
           : bet.taker_id
             ? `<span class="bet-status-taken">✓ Taken by ${bet.taker_name}</span>`
             : canTake
               ? `<button class="btn-take-bet" onclick="takeBet(${bet.id})">Take this bet</button>`
               : `<span class="bet-status-open">Open</span>`
         }
-        ${canClose ? `<button class="btn-close-bet" onclick="closeBet(${bet.id})">Settle</button>` : ''}
+        ${renderSettleUpButtons(bet, 'general')}
         ${creatorCanDelete ? `<button class="btn-delete-bet" onclick="deleteBet(${bet.id})">Delete</button>` : ''}
         ${adminCanDelete ? `<button class="btn-delete-bet" onclick="if(confirm('${bet.taker_id ? 'This bet was taken. ' : ''}Delete this bet as admin?')) deleteBet(${bet.id})" style="${bet.taker_id ? 'background:#dc2626;' : ''}">Delete</button>` : ''}
       </div>
@@ -1295,11 +1352,8 @@ function renderBetCard(bet) {
 
 function renderMyBetCard(bet) {
   const isClosed = bet.closed;
-  // Regular users can only delete their own untaken, non-closed bets; admin can delete any non-closed bet
   const canDelete = !isClosed && !bet.taker_id;
   const adminCanDelete = !isClosed && currentUser.is_admin && bet.taker_id;
-  // Creator can close a taken bet
-  const canClose = !isClosed && bet.taker_id;
   return `
     <div class="bet-card${isClosed ? ' bet-closed' : ''}">
       <div class="bet-header">
@@ -1309,12 +1363,12 @@ function renderMyBetCard(bet) {
       <div class="bet-description">${escapeHtml(bet.description)}</div>
       <div class="bet-footer">
         ${isClosed
-          ? `<span class="bet-status-closed">Settled</span>`
+          ? renderBetSettledStatus(bet)
           : bet.taker_id
             ? `<span class="bet-status-taken">✓ Taken by ${bet.taker_name}</span>`
             : `<span class="bet-status-open">Open — waiting for taker</span>`
         }
-        ${canClose ? `<button class="btn-close-bet" onclick="closeBet(${bet.id})">Settle</button>` : ''}
+        ${renderSettleUpButtons(bet, 'creator')}
         ${canDelete ? `<button class="btn-delete-bet" onclick="deleteBet(${bet.id})">Delete</button>` : ''}
         ${adminCanDelete ? `<button class="btn-delete-bet" onclick="if(confirm('This bet was taken. Delete anyway as admin?')) deleteBet(${bet.id})" style="background:#dc2626;">Admin Delete</button>` : ''}
       </div>
@@ -2165,17 +2219,38 @@ async function takeBet(betId) {
   }
 }
 
-async function closeBet(betId) {
+async function settleUp(betId, winner) {
   const bet = betData.bets.find(b => b.id === betId);
-  const desc = bet ? `"${bet.description}" for $${bet.amount}` : 'this bet';
-  if (!confirm(`Settle ${desc}? This marks the bet as done and frees up a slot.`)) return;
+  if (!bet) return;
+  const winnerName = winner === 'creator' ? bet.creator_name : bet.taker_name;
+  if (!confirm(`You're saying ${winnerName} won this bet. Confirm?`)) return;
   try {
-    await apiPost(`/api/bets/${betId}/close?viewer_id=${currentUser.id}`, {});
-    showToast("Bet settled", "success");
+    const res = await apiPost(`/api/bets/${betId}/settle-up?viewer_id=${currentUser.id}`, { winner });
+    if (res.status === 'settled') {
+      showToast(`Bet settled — ${winnerName} wins!`, 'success');
+    } else if (res.status === 'proposed') {
+      showToast('Settle-up proposed — waiting for the other side to confirm.', 'info');
+    } else if (res.status === 'disputed') {
+      showToast('You disagree. Your counter-proposal was sent.', 'info');
+    } else if (res.status === 'updated') {
+      showToast('Your proposal has been updated.', 'info');
+    }
     await loadBets();
     render();
   } catch (err) {
-    showToast(err.message, "error");
+    showToast(err.message, 'error');
+  }
+}
+
+async function voidBet(betId) {
+  if (!confirm('Void this bet? Both users get their slot back and the bet is marked invalid.')) return;
+  try {
+    await apiPost(`/api/bets/${betId}/void?viewer_id=${currentUser.id}`, {});
+    showToast('Bet voided', 'success');
+    await loadBets();
+    render();
+  } catch (err) {
+    showToast(err.message, 'error');
   }
 }
 

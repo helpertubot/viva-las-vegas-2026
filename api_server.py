@@ -120,7 +120,9 @@ def init_db(conn):
             closed BOOLEAN NOT NULL DEFAULT FALSE,
             closed_at DOUBLE PRECISION,
             created_at DOUBLE PRECISION NOT NULL,
-            bet_category TEXT DEFAULT NULL
+            bet_category TEXT DEFAULT NULL,
+            settle_proposed_by INTEGER DEFAULT NULL,
+            settle_winner TEXT DEFAULT NULL
         );
     """)
     cur.execute("""
@@ -798,13 +800,18 @@ def take_bet(bet_id: int, viewer_id: int = 0):
     cur.close()
     return {"ok": True}
 
-@app.post("/api/bets/{bet_id}/close")
-def close_bet(bet_id: int, viewer_id: int = 0):
-    """Creator can close/settle a bet, freeing up slots for new bets."""
+class SettleUpRequest(BaseModel):
+    winner: str  # 'creator' or 'taker'
+
+@app.post("/api/bets/{bet_id}/settle-up")
+def propose_settle_up(bet_id: int, req: SettleUpRequest, viewer_id: int = 0):
+    """Propose or confirm a settle-up. Both sides must agree on who won."""
     if viewer_id == 0:
         raise HTTPException(status_code=400, detail="Must be logged in")
+    if req.winner not in ('creator', 'taker'):
+        raise HTTPException(status_code=400, detail="Winner must be 'creator' or 'taker'")
     cur = get_cursor()
-    # Check if viewer is admin
+    # Check if admin
     cur.execute("SELECT is_admin FROM users WHERE id = %s", (viewer_id,))
     viewer_row = fetchone_dict(cur)
     is_admin = viewer_row and viewer_row.get("is_admin", False)
@@ -814,14 +821,113 @@ def close_bet(bet_id: int, viewer_id: int = 0):
     if not bet:
         cur.close()
         raise HTTPException(status_code=404, detail="Bet not found")
-    if bet["creator_id"] != viewer_id and not is_admin:
+    if bet["closed"]:
         cur.close()
-        raise HTTPException(status_code=403, detail="Only the bet creator or admin can close a bet")
+        raise HTTPException(status_code=400, detail="Bet is already settled")
+    if not bet["taker_id"]:
+        cur.close()
+        raise HTTPException(status_code=400, detail="Bet hasn't been taken yet")
+
+    is_creator = viewer_id == bet["creator_id"]
+    is_taker = viewer_id == bet["taker_id"]
+    if not is_creator and not is_taker and not is_admin:
+        cur.close()
+        raise HTTPException(status_code=403, detail="Only the creator or taker can settle up")
+
+    # Admin can force-settle immediately
+    if is_admin:
+        now = time.time()
+        cur.execute("UPDATE bets SET closed = TRUE, closed_at = %s, settle_winner = %s, settle_proposed_by = %s WHERE id = %s",
+                    (now, req.winner, viewer_id, bet_id))
+        db.commit()
+        cur.close()
+        return {"ok": True, "status": "settled", "winner": req.winner}
+
+    existing_proposal = bet.get("settle_proposed_by")
+    existing_winner = bet.get("settle_winner")
+
+    if existing_proposal is None:
+        # No proposal yet — this is the first one
+        cur.execute("UPDATE bets SET settle_proposed_by = %s, settle_winner = %s WHERE id = %s",
+                    (viewer_id, req.winner, bet_id))
+        db.commit()
+        cur.close()
+        return {"ok": True, "status": "proposed", "winner": req.winner}
+    else:
+        # There's already a proposal — check if this is the other party confirming
+        if existing_proposal == viewer_id:
+            # Same person re-proposing — let them change their vote
+            cur.execute("UPDATE bets SET settle_winner = %s WHERE id = %s", (req.winner, bet_id))
+            db.commit()
+            cur.close()
+            return {"ok": True, "status": "updated", "winner": req.winner}
+        else:
+            # Other party responding
+            if existing_winner == req.winner:
+                # Both agree — settle the bet
+                now = time.time()
+                cur.execute("UPDATE bets SET closed = TRUE, closed_at = %s WHERE id = %s", (now, bet_id))
+                db.commit()
+                cur.close()
+                return {"ok": True, "status": "settled", "winner": req.winner}
+            else:
+                # Disagreement — update to the new person's proposal, reset
+                cur.execute("UPDATE bets SET settle_proposed_by = %s, settle_winner = %s WHERE id = %s",
+                            (viewer_id, req.winner, bet_id))
+                db.commit()
+                cur.close()
+                return {"ok": True, "status": "disputed", "winner": req.winner, "message": "You disagree with the other party. Your counter-proposal has been submitted."}
+
+@app.post("/api/bets/{bet_id}/close")
+def close_bet(bet_id: int, viewer_id: int = 0):
+    """Admin-only: force close a bet without settle-up."""
+    if viewer_id == 0:
+        raise HTTPException(status_code=400, detail="Must be logged in")
+    cur = get_cursor()
+    cur.execute("SELECT is_admin FROM users WHERE id = %s", (viewer_id,))
+    viewer_row = fetchone_dict(cur)
+    is_admin = viewer_row and viewer_row.get("is_admin", False)
+    if not is_admin:
+        cur.close()
+        raise HTTPException(status_code=403, detail="Only admin can force-close a bet")
+    cur.execute("SELECT * FROM bets WHERE id = %s", (bet_id,))
+    bet = fetchone_dict(cur)
+    if not bet:
+        cur.close()
+        raise HTTPException(status_code=404, detail="Bet not found")
     if bet["closed"]:
         cur.close()
         raise HTTPException(status_code=400, detail="Bet is already closed")
     now = time.time()
     cur.execute("UPDATE bets SET closed = TRUE, closed_at = %s WHERE id = %s", (now, bet_id))
+    db.commit()
+    cur.close()
+    return {"ok": True}
+
+@app.post("/api/bets/{bet_id}/void")
+def void_bet(bet_id: int, viewer_id: int = 0):
+    """Admin-only: void/invalidate a bet. Resets it so both users get their slot back."""
+    if viewer_id == 0:
+        raise HTTPException(status_code=400, detail="Must be logged in")
+    cur = get_cursor()
+    cur.execute("SELECT is_admin FROM users WHERE id = %s", (viewer_id,))
+    viewer_row = fetchone_dict(cur)
+    is_admin = viewer_row and viewer_row.get("is_admin", False)
+    if not is_admin:
+        cur.close()
+        raise HTTPException(status_code=403, detail="Only admin can void a bet")
+    cur.execute("SELECT * FROM bets WHERE id = %s", (bet_id,))
+    bet = fetchone_dict(cur)
+    if not bet:
+        cur.close()
+        raise HTTPException(status_code=404, detail="Bet not found")
+    if bet["closed"]:
+        cur.close()
+        raise HTTPException(status_code=400, detail="Bet is already closed")
+    now = time.time()
+    # Mark as closed with settle_winner = 'void' so we know it was invalidated
+    cur.execute("UPDATE bets SET closed = TRUE, closed_at = %s, settle_winner = 'void', settle_proposed_by = %s WHERE id = %s",
+                (now, viewer_id, bet_id))
     db.commit()
     cur.close()
     return {"ok": True}
