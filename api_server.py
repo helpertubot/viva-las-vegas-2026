@@ -144,6 +144,13 @@ def init_db(conn):
     cur.execute("""
         ALTER TABLE brackets ADD COLUMN IF NOT EXISTS tiebreaker_score INTEGER DEFAULT NULL
     """)
+    # Add bio column if missing
+    cur.execute("""
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT DEFAULT ''
+    """)
+    # Arrival/departure columns on stay_info
+    cur.execute("ALTER TABLE stay_info ADD COLUMN IF NOT EXISTS arrival TEXT DEFAULT ''")
+    cur.execute("ALTER TABLE stay_info ADD COLUMN IF NOT EXISTS departure TEXT DEFAULT ''")
     # Stay info table
     cur.execute("""
         CREATE TABLE IF NOT EXISTS stay_info (
@@ -288,7 +295,7 @@ def login(req: LoginRequest):
 def list_users():
     try:
         cur = get_cursor()
-        cur.execute("SELECT id, email, username, display_name, avatar_data, is_admin FROM users ORDER BY display_name")
+        cur.execute("SELECT id, email, username, display_name, avatar_data, is_admin, COALESCE(bio, '') as bio FROM users ORDER BY display_name")
         rows = fetchall_dict(cur)
         cur.close()
         return rows
@@ -358,6 +365,25 @@ async def upload_avatar(user_id: int, file: UploadFile = File(...)):
     db.commit()
     cur.close()
     return {"ok": True}
+
+class UpdateBioRequest(BaseModel):
+    bio: str = ''
+
+@app.put("/api/users/{user_id}/bio")
+def update_bio(user_id: int, req: UpdateBioRequest):
+    try:
+        cur = get_cursor()
+        cur.execute("UPDATE users SET bio = %s WHERE id = %s", (req.bio.strip()[:200], user_id))
+        db.commit()
+        cur.close()
+        return {"ok": True}
+    except Exception as e:
+        logger.error(f"UPDATE_BIO ERROR: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ---- Brackets ----
 @app.get("/api/brackets")
@@ -564,15 +590,22 @@ def take_bet(bet_id: int, viewer_id: int = 0):
 @app.delete("/api/bets/{bet_id}")
 def delete_bet(bet_id: int, viewer_id: int = 0):
     cur = get_cursor()
+    # Check if viewer is admin
+    cur.execute("SELECT is_admin FROM users WHERE id = %s", (viewer_id,))
+    viewer_row = fetchone_dict(cur)
+    is_admin = viewer_row and viewer_row.get("is_admin", False)
+
     cur.execute("SELECT * FROM bets WHERE id = %s", (bet_id,))
     bet = fetchone_dict(cur)
     if not bet:
         cur.close()
         raise HTTPException(status_code=404, detail="Bet not found")
-    if bet["creator_id"] != viewer_id:
+    # Admin can delete any bet; regular users can only delete their own
+    if not is_admin and bet["creator_id"] != viewer_id:
         cur.close()
         raise HTTPException(status_code=403, detail="Can only delete your own bets")
-    if bet["taker_id"]:
+    # Regular users cannot delete taken bets; admin can
+    if not is_admin and bet["taker_id"]:
         cur.close()
         raise HTTPException(status_code=400, detail="Cannot delete a bet that has been taken")
     cur.execute("DELETE FROM bets WHERE id = %s", (bet_id,))
@@ -619,6 +652,8 @@ class SaveStayRequest(BaseModel):
     hotel_link: str = ''
     check_in: str = ''
     check_out: str = ''
+    arrival: str = ''
+    departure: str = ''
 
 @app.get("/api/stays")
 def list_stays():
@@ -642,15 +677,17 @@ def save_stay(user_id: int, req: SaveStayRequest):
         now = time.time()
         cur = get_cursor()
         cur.execute("""
-            INSERT INTO stay_info (user_id, hotel_name, hotel_link, check_in, check_out, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO stay_info (user_id, hotel_name, hotel_link, check_in, check_out, arrival, departure, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (user_id) DO UPDATE SET
                 hotel_name = EXCLUDED.hotel_name,
                 hotel_link = EXCLUDED.hotel_link,
                 check_in = EXCLUDED.check_in,
                 check_out = EXCLUDED.check_out,
+                arrival = EXCLUDED.arrival,
+                departure = EXCLUDED.departure,
                 updated_at = EXCLUDED.updated_at
-        """, (user_id, req.hotel_name.strip(), req.hotel_link.strip(), req.check_in.strip(), req.check_out.strip(), now))
+        """, (user_id, req.hotel_name.strip(), req.hotel_link.strip(), req.check_in.strip(), req.check_out.strip(), req.arrival.strip(), req.departure.strip(), now))
         db.commit()
         cur.close()
         return {"ok": True}
@@ -775,7 +812,11 @@ def parse_espn_games(data):
                 winner_name, winner_seed = name2, seed2
 
         espn_id = str(event.get("id", ""))
-        game_date = comp.get("date", "")[:10]
+        game_datetime = comp.get("date", "")  # Full ISO datetime e.g. "2026-03-19T16:00Z"
+        game_date = game_datetime[:10] if game_datetime else ""
+
+        # Extract status detail (e.g. "1st Half", "Halftime", "3:42 - 2nd Half")
+        status_detail = comp.get("status", {}).get("type", {}).get("shortDetail", "")
 
         game_key = f"espn_{espn_id}"
 
@@ -795,6 +836,8 @@ def parse_espn_games(data):
             "winner_seed": winner_seed,
             "game_state": game_state,
             "game_date": game_date,
+            "game_datetime": game_datetime,
+            "status_detail": status_detail,
         })
     return games
 

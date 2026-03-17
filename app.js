@@ -298,15 +298,19 @@ function renderHome() {
         <div class="stat-value">${submittedBrackets} / ${totalBrackets}</div>
       </div>
     </div>
-    <div class="venmo-banner">
-      <div class="venmo-icon">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M19.5 3.6c.6 1 .9 2 .9 3.3 0 4.1-3.5 9.4-6.3 13.1H8.4L6 3.9l5.1-.5 1.2 9.6c1.1-1.8 2.5-4.6 2.5-6.5 0-1.2-.2-2-.5-2.7L19.5 3.6z" fill="#3D95CE"/></svg>
+    <div class="venmo-banner venmo-qr-banner">
+      <div class="venmo-qr-left">
+        <div class="venmo-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M19.5 3.6c.6 1 .9 2 .9 3.3 0 4.1-3.5 9.4-6.3 13.1H8.4L6 3.9l5.1-.5 1.2 9.6c1.1-1.8 2.5-4.6 2.5-6.5 0-1.2-.2-2-.5-2.7L19.5 3.6z" fill="#3D95CE"/></svg>
+        </div>
+        <div class="venmo-info">
+          <div class="venmo-label">Pay Entry Fee ($${config.entry_fee}/bracket)</div>
+          <div style="font-size:12px;color:var(--text-muted);">Scan the QR code with your phone</div>
+        </div>
       </div>
-      <div class="venmo-info">
-        <div class="venmo-label">Pay Entry Fee ($${config.entry_fee}/bracket)</div>
-        <a href="https://venmo.com/u/Paul-Cummins-5" target="_blank" rel="noopener" class="venmo-handle">@Paul-Cummins-5</a>
-      </div>
-      <a href="https://venmo.com/u/Paul-Cummins-5" target="_blank" rel="noopener" class="venmo-pay-btn">Pay Now</a>
+      <a href="https://venmo.com/u/Paul-Cummins-5" target="_blank" rel="noopener" class="venmo-qr-link">
+        <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQgAAAEICAIAAAAslP2oAAAE/0lEQVR4nO3dQW4lNRRAUYLYEBtgQSyoF8QGWNJnjHQ9sOQnVyXnDFH6p9LkylK9tv31+Xx+A/7v99sPAE8kDAjCgCAMCMKAIAwIwoAgDAjCgCAMCMKAIAwIwoAgDAjCgPDH7h/469e/E89x3D9//5n/fff5V58z7dTf8/Tzv/33YcWKAUEYEIQBQRgQhAFBGBCEAWF7jrHylvf9p+Ybu6af89bXr7zl92HFigFBGBCEAUEYEIQBQRgQhAHh2Bxj5Wn7CnafZ/q9/urzp5/z1j6Kp/0+rFgxIAgDgjAgCAOCMCAIA4IwIIzPMZ5m9/33qTnD9H6G3ee8tV/iLawYEIQBQRgQhAFBGBCEAUEYEH7cHOOUp+2veNq+i7ezYkAQBgRhQBAGBGFAEAYEYUAYn2M87d/939qfcGp/xds97fdhxYoBQRgQhAFBGBCEAUEYEIQB4dgc47u+d5926x7uU8+z+zlvYcWAIAwIwoAgDAjCgCAMCMKA8PX5fG4/wyOcuu/i1n3bb9nn8BZWDAjCgCAMCMKAIAwIwoAgDAjb+zHesn9g5dR926fuu3jL9901va9j+vfNigFBGBCEAUEYEIQBQRgQhAFhe45x6z7p6XnI0/ZXrEy/v3/7z3uKFQOCMCAIA4IwIAgDgjAgCAPCtXu+b+1P2P38U6bnCbtOff6tezOmfx+sGBCEAUEYEIQBQRgQhAFBGBC278d42v3NT5uT/LT9EtNu3fthxYAgDAjCgCAMCMKAIAwIwoBwbD/GrTnArfsfpt+v37oX4tY5Uae4HwMGCQOCMCAIA4IwIAgDgjAgHJtj3Lpve2V37jG9L+K7nlt1a7+H+zHgAmFAEAYEYUAQBgRhQBAGhPH9GNNO7VuYPq/pu77v/673f1sxIAgDgjAgCAOCMCAIA4IwIGzfj3HL9DlLT3vv/vav33VrDrZixYAgDAjCgCAMCMKAIAwIwoBw7VypW9/31HlKu279/Uzfp7HL/RjwYsKAIAwIwoAgDAjCgCAMCNfOlXrLPoFb94jfur/i1nxj5db8x4oBQRgQhAFBGBCEAUEYEIQBYXuOMX2O0PR8Y+Ut95Tvfv2tudD056y4HwMGCQOCMCAIA4IwIAgDgjAgXLsf49Y+h5Wn3Qtxaz4z7Wn3YKxYMSAIA4IwIAgDgjAgCAOCMCBc249xyq15yFvmCU97zul9Haf+/1oxIAgDgjAgCAOCMCAIA4IwIFzbj3HLrfOUdk3v99j9vm/5udzzDYOEAUEYEIQBQRgQhAFBGBBevx9j5da947uf/3an5gZPO2/KigFBGBCEAUEYEIQBQRgQhAFhe46xcus99PQ5RU+7P3vl1vlLT5s/nGLFgCAMCMKAIAwIwoAgDAjCgHBsjrFy63ykU26dpzR9ztXT9pPcmv+sWDEgCAOCMCAIA4IwIAgDgjAgjM8x3mJ6f8L03GD6fKdTnz/9c52ab1gxIAgDgjAgCAOCMCAIA4IwIPy4OcbTzn1aect95KdMz0N2WTEgCAOCMCAIA4IwIAgDgjAgfH0+n60/MH3fwq5bzzP9Hn36PKun3dex+znTrBgQhAFBGBCEAUEYEIQBQRgQju3HmH6vf8r0+Uu7ps9Zest93rfmNitWDAjCgCAMCMKAIAwIwoAgDAjb+zHgJ7BiQBAGBGFAEAYEYUAQBgRhQBAGBGFAEAYEYUAQBgRhQBAGBGFA+A9nWCQ+2BjRmgAAAABJRU5ErkJggg==" alt="Venmo QR Code" class="venmo-qr-img" />
+      </a>
     </div>
     ${renderLiveScores()}
     <h2 class="section-title">Members</h2>
@@ -320,6 +324,7 @@ function renderHome() {
           <div class="member-card" onclick="viewProfile(${u.id})">
             <div class="member-avatar">${renderAvatar(u)}</div>
             <div class="member-name">${u.display_name}</div>
+            ${u.bio ? `<div class="member-bio">${escapeHtml(u.bio)}</div>` : ''}
             <div class="member-status">
               ${userBrackets.length === 0
                 ? '<span class="pending">No brackets</span>'
@@ -670,48 +675,89 @@ async function refreshLeaderboard() {
 }
 
 // ===== LIVE SCORES =====
+function formatGameTime(datetimeStr) {
+  if (!datetimeStr) return '';
+  try {
+    const d = new Date(datetimeStr);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+  } catch (e) { return ''; }
+}
+
+function formatGameDay(dateStr) {
+  if (!dateStr) return 'Upcoming';
+  try {
+    const [y, m, d] = dateStr.split('-');
+    const dt = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${days[dt.getDay()]}, ${months[dt.getMonth()]} ${dt.getDate()}`;
+  } catch (e) { return dateStr; }
+}
+
 function renderLiveScores() {
   const games = liveSchedule.games || [];
   if (games.length === 0) return '';
 
+  // Sort: live first, then upcoming by time, then final
+  const sorted = [...games].sort((a, b) => {
+    const order = { 'in': 0, 'pre': 1, 'final': 2 };
+    if (order[a.game_state] !== order[b.game_state]) return order[a.game_state] - order[b.game_state];
+    return (a.game_datetime || '').localeCompare(b.game_datetime || '');
+  });
+
+  // Group by date
+  const grouped = {};
+  for (const g of sorted) {
+    const day = g.game_date || 'Unknown';
+    if (!grouped[day]) grouped[day] = [];
+    grouped[day].push(g);
+  }
+
   const inProgress = games.filter(g => g.game_state === 'in');
-  const upcoming = games.filter(g => g.game_state === 'pre');
-  const final_ = games.filter(g => g.game_state === 'final');
-  const displayGames = [...inProgress, ...upcoming, ...final_].slice(0, 8);
 
-  if (displayGames.length === 0) return '';
+  let html = `<div class="live-scores-section">
+    <h3 class="section-title" style="display:flex;align-items:center;gap:8px;">
+      Tournament Games
+      ${inProgress.length > 0 ? '<span class="live-dot"></span> <span style="font-size:12px;color:#e53e3e;font-weight:600;">LIVE</span>' : ''}
+    </h3>`;
 
-  return `
-    <div class="live-scores-section">
-      <h3 class="section-title" style="display:flex;align-items:center;gap:8px;">
-        Live Scores
-        ${inProgress.length > 0 ? '<span class="live-dot"></span>' : ''}
-      </h3>
-      <div class="live-scores-grid">
-        ${displayGames.map(g => {
-          const stateClass = g.game_state === 'in' ? 'live-game-active' : g.game_state === 'final' ? 'live-game-final' : 'live-game-pre';
-          const stateLabel = g.game_state === 'in' ? 'LIVE' : g.game_state === 'final' ? 'FINAL' : g.round_name || 'Upcoming';
-          return `
-            <div class="live-game-card ${stateClass}">
-              <div class="live-game-status">${stateLabel}</div>
-              <div class="live-game-teams">
-                <div class="live-team ${g.game_state === 'final' && g.winner_name === g.team1_name ? 'live-winner' : ''}">
-                  <span class="live-seed">${g.team1_seed || ''}</span>
-                  <span class="live-name">${g.team1_name}</span>
-                  <span class="live-score-num">${g.game_state !== 'pre' ? g.team1_score : ''}</span>
-                </div>
-                <div class="live-team ${g.game_state === 'final' && g.winner_name === g.team2_name ? 'live-winner' : ''}">
-                  <span class="live-seed">${g.team2_seed || ''}</span>
-                  <span class="live-name">${g.team2_name}</span>
-                  <span class="live-score-num">${g.game_state !== 'pre' ? g.team2_score : ''}</span>
-                </div>
-              </div>
+  for (const [day, dayGames] of Object.entries(grouped)) {
+    const roundLabel = dayGames[0]?.round_name || '';
+    html += `<div class="live-day-header">${formatGameDay(day)}${roundLabel ? ` &mdash; ${roundLabel}` : ''}</div>`;
+    html += `<div class="live-scores-grid">`;
+    for (const g of dayGames) {
+      const stateClass = g.game_state === 'in' ? 'live-game-active' : g.game_state === 'final' ? 'live-game-final' : 'live-game-pre';
+      let stateLabel = '';
+      if (g.game_state === 'in') {
+        stateLabel = g.status_detail || 'LIVE';
+      } else if (g.game_state === 'final') {
+        stateLabel = 'FINAL';
+      } else {
+        stateLabel = formatGameTime(g.game_datetime) || g.round_name || 'TBD';
+      }
+      html += `
+        <div class="live-game-card ${stateClass}">
+          <div class="live-game-status">${stateLabel}</div>
+          <div class="live-game-teams">
+            <div class="live-team ${g.game_state === 'final' && g.winner_name === g.team1_name ? 'live-winner' : ''}">
+              <span class="live-seed">${g.team1_seed || ''}</span>
+              <span class="live-name">${g.team1_name}</span>
+              <span class="live-score-num">${g.game_state !== 'pre' ? g.team1_score : ''}</span>
             </div>
-          `;
-        }).join("")}
-      </div>
-    </div>
-  `;
+            <div class="live-team ${g.game_state === 'final' && g.winner_name === g.team2_name ? 'live-winner' : ''}">
+              <span class="live-seed">${g.team2_seed || ''}</span>
+              <span class="live-name">${g.team2_name}</span>
+              <span class="live-score-num">${g.game_state !== 'pre' ? g.team2_score : ''}</span>
+            </div>
+          </div>
+        </div>`;
+    }
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+  return html;
 }
 
 // ===== BETS PAGE =====
@@ -810,6 +856,7 @@ function renderCreateBetForm() {
 
 function renderBetCard(bet) {
   const canTake = !bet.taker_id && bet.creator_id !== currentUser.id && (!bet.about_user_id || bet.about_user_id !== currentUser.id);
+  const adminCanDelete = currentUser.is_admin;
   return `
     <div class="bet-card">
       <div class="bet-header">
@@ -825,12 +872,16 @@ function renderBetCard(bet) {
             ? `<button class="btn-take-bet" onclick="takeBet(${bet.id})">Take this bet</button>`
             : `<span class="bet-status-open">Open</span>`
         }
+        ${adminCanDelete ? `<button class="btn-delete-bet" onclick="${bet.taker_id ? "if(confirm('This bet was taken. Delete anyway as admin?'))" : ''} deleteBet(${bet.id})" style="${bet.taker_id ? 'background:#dc2626;' : ''}">Delete</button>` : ''}
       </div>
     </div>
   `;
 }
 
 function renderMyBetCard(bet) {
+  // Regular users can only delete their own untaken bets; admin can delete any bet
+  const canDelete = !bet.taker_id;
+  const adminCanDelete = currentUser.is_admin && bet.taker_id;
   return `
     <div class="bet-card">
       <div class="bet-header">
@@ -843,7 +894,8 @@ function renderMyBetCard(bet) {
           ? `<span class="bet-status-taken">✓ Taken by ${bet.taker_name}</span>`
           : `<span class="bet-status-open">Open — waiting for taker</span>`
         }
-        ${!bet.taker_id ? `<button class="btn-delete-bet" onclick="deleteBet(${bet.id})">Delete</button>` : ''}
+        ${canDelete ? `<button class="btn-delete-bet" onclick="deleteBet(${bet.id})">Delete</button>` : ''}
+        ${adminCanDelete ? `<button class="btn-delete-bet" onclick="if(confirm('This bet was taken. Delete anyway as admin?')) deleteBet(${bet.id})" style="background:#dc2626;">Admin Delete</button>` : ''}
       </div>
     </div>
   `;
@@ -858,18 +910,30 @@ function renderProfilePage() {
   const submittedCount = userBrackets.filter(b => b.submitted).length;
   const userBets = betData.bets.filter(b => b.about_user_id === user.id);
 
+  const isOwnProfile = user.id === currentUser.id;
+
   return `
     <button class="btn-back" onclick="navigate('home')">← Back</button>
     <div class="profile-header">
       <div class="profile-avatar">${renderAvatar(user)}</div>
       <div class="profile-info">
         <h2>${user.display_name}</h2>
+        ${user.bio ? `<div class="profile-bio">${escapeHtml(user.bio)}</div>` : (isOwnProfile ? '<div class="profile-bio" style="color:var(--text-muted);font-style:italic;">No bio yet</div>' : '')}
         <div class="profile-stats">
           <div class="profile-stat"><strong>${userBrackets.length}</strong> bracket${userBrackets.length !== 1 ? 's' : ''} (${submittedCount} submitted)</div>
           <div class="profile-stat"><strong>${userBets.length}</strong> bets about them</div>
         </div>
       </div>
     </div>
+    ${isOwnProfile ? `
+    <div class="profile-edit-bio" style="margin-bottom:20px;">
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">My Bio (max 200 chars)</label>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="edit-bio" maxlength="200" placeholder="Write a short bio..." value="${escapeHtml(user.bio || '')}" style="flex:1;font-size:13px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;">
+        <button class="btn-primary" style="width:auto;padding:8px 16px;font-size:13px;" onclick="saveMyBio()">Save</button>
+      </div>
+    </div>
+    ` : ''}
 
     ${userBrackets.length > 0 ? `
     <div class="bets-section">
@@ -944,6 +1008,16 @@ function renderTripPage() {
             <input type="date" id="stay-checkout" value="${myStay ? myStay.check_out : ''}">
           </div>
         </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label>Arrival <span style="font-size:11px;color:var(--text-muted);">(flight/time info)</span></label>
+            <input type="text" id="stay-arrival" placeholder="e.g. Mar 18, 3:30 PM — SW 1234" value="${myStay && myStay.arrival ? escapeHtml(myStay.arrival) : ''}">
+          </div>
+          <div class="form-field">
+            <label>Departure <span style="font-size:11px;color:var(--text-muted);">(flight/time info)</span></label>
+            <input type="text" id="stay-departure" placeholder="e.g. Mar 22, 11:00 AM — SW 5678" value="${myStay && myStay.departure ? escapeHtml(myStay.departure) : ''}">
+          </div>
+        </div>
         <button class="btn-primary" style="width:auto;padding:10px 20px;font-size:13px;" onclick="saveMyStay()">Save My Stay</button>
       </div>
 
@@ -974,6 +1048,8 @@ function renderTripPage() {
                     ${s.check_in ? formatStayDate(s.check_in) : '?'} → ${s.check_out ? formatStayDate(s.check_out) : '?'}
                   </div>
                 ` : ''}
+                ${s.arrival ? `<div class="stay-travel"><span class="stay-travel-label">✈ Arrives:</span> ${escapeHtml(s.arrival)}</div>` : ''}
+                ${s.departure ? `<div class="stay-travel"><span class="stay-travel-label">✈ Departs:</span> ${escapeHtml(s.departure)}</div>` : ''}
               </div>
             `;
           }).join('')}
@@ -995,12 +1071,14 @@ async function saveMyStay() {
   const hotel_link = document.getElementById('stay-link').value;
   const check_in = document.getElementById('stay-checkin').value;
   const check_out = document.getElementById('stay-checkout').value;
-  if (!hotel_name && !check_in && !check_out) {
+  const arrival = document.getElementById('stay-arrival').value;
+  const departure = document.getElementById('stay-departure').value;
+  if (!hotel_name && !check_in && !check_out && !arrival && !departure) {
     showToast('Fill in at least one field', 'error');
     return;
   }
   try {
-    await apiPut(`/api/stays/${currentUser.id}`, { hotel_name, hotel_link, check_in, check_out });
+    await apiPut(`/api/stays/${currentUser.id}`, { hotel_name, hotel_link, check_in, check_out, arrival, departure });
     showToast('Stay info saved', 'success');
     await loadStays();
     render();
@@ -1015,6 +1093,49 @@ async function saveGroupSchedule() {
     await apiPost('/api/admin/settings', { key: 'group_schedule', value: text });
     config.group_schedule = text;
     showToast('Schedule saved', 'success');
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function saveAdminStay(userId) {
+  const hotel_name = document.getElementById(`admin-stay-hotel-${userId}`).value;
+  const hotel_link = document.getElementById(`admin-stay-link-${userId}`).value;
+  const check_in = document.getElementById(`admin-stay-in-${userId}`).value;
+  const check_out = document.getElementById(`admin-stay-out-${userId}`).value;
+  const arrival = document.getElementById(`admin-stay-arrival-${userId}`).value;
+  const departure = document.getElementById(`admin-stay-departure-${userId}`).value;
+  try {
+    await apiPut(`/api/stays/${userId}`, { hotel_name, hotel_link, check_in, check_out, arrival, departure });
+    showToast('Stay saved', 'success');
+    await loadStays();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+// ===== BIO FUNCTIONS =====
+async function saveMyBio() {
+  const bio = document.getElementById('edit-bio')?.value || '';
+  try {
+    await apiPut(`/api/users/${currentUser.id}/bio`, { bio });
+    showToast('Bio saved', 'success');
+    currentUser.bio = bio;
+    const u = allUsers.find(x => x.id === currentUser.id);
+    if (u) u.bio = bio;
+    renderPage();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function saveAdminBio(userId) {
+  const bio = document.getElementById(`admin-bio-${userId}`)?.value || '';
+  try {
+    await apiPut(`/api/users/${userId}/bio`, { bio });
+    showToast('Bio saved', 'success');
+    const u = allUsers.find(x => x.id === userId);
+    if (u) u.bio = bio;
   } catch (err) {
     showToast(err.message, 'error');
   }
@@ -1039,6 +1160,74 @@ function renderAdminPage() {
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:8px;">Edit the trip schedule. Use <code># Day Title</code> for day headers. One event per line.</p>
       <textarea id="admin-schedule" rows="10" style="width:100%;font-size:13px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;resize:vertical;background:var(--surface);color:var(--navy-900);">${escapeHtml(config.group_schedule || '')}</textarea>
       <button class="btn-primary" style="width:auto;padding:10px 20px;font-size:13px;margin-top:8px;" onclick="saveGroupSchedule()">Save Schedule</button>
+    </div>
+
+    <div class="admin-section">
+      <h3>Member Stays</h3>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Set hotel info for each member. They can also update their own on the Trip page.</p>
+      ${allUsers.map(u => {
+        const stay = allStays.find(s => s.user_id === u.id);
+        return `
+          <div class="admin-stay-row" style="background:var(--navy-50,#f6f8fb);border:1px solid var(--navy-100);border-radius:8px;padding:12px;margin-bottom:10px;">
+            <div style="font-weight:700;font-size:13px;color:var(--navy-900);margin-bottom:8px;display:flex;align-items:center;gap:8px;">
+              <div class="mini-avatar" style="width:24px;height:24px;font-size:10px;">${renderAvatar(u)}</div>
+              ${escapeHtml(u.display_name)}
+            </div>
+            <div class="form-row" style="gap:8px;">
+              <div class="form-field">
+                <label style="font-size:11px;">Hotel</label>
+                <input type="text" id="admin-stay-hotel-${u.id}" placeholder="Hotel name" value="${stay ? escapeHtml(stay.hotel_name) : ''}" style="font-size:12px;padding:6px 8px;">
+              </div>
+              <div class="form-field">
+                <label style="font-size:11px;">Maps Link</label>
+                <input type="url" id="admin-stay-link-${u.id}" placeholder="Google Maps URL" value="${stay ? escapeHtml(stay.hotel_link) : ''}" style="font-size:12px;padding:6px 8px;">
+              </div>
+            </div>
+            <div class="form-row" style="gap:8px;">
+              <div class="form-field">
+                <label style="font-size:11px;">Check-in</label>
+                <input type="date" id="admin-stay-in-${u.id}" value="${stay ? stay.check_in : ''}" style="font-size:12px;padding:6px 8px;">
+              </div>
+              <div class="form-field">
+                <label style="font-size:11px;">Check-out</label>
+                <input type="date" id="admin-stay-out-${u.id}" value="${stay ? stay.check_out : ''}" style="font-size:12px;padding:6px 8px;">
+              </div>
+            </div>
+            <div class="form-row" style="gap:8px;">
+              <div class="form-field">
+                <label style="font-size:11px;">Arrival (flight/time)</label>
+                <input type="text" id="admin-stay-arrival-${u.id}" placeholder="e.g. Mar 18, 3:30 PM — SW 1234" value="${stay && stay.arrival ? escapeHtml(stay.arrival) : ''}" style="font-size:12px;padding:6px 8px;">
+              </div>
+              <div class="form-field">
+                <label style="font-size:11px;">Departure (flight/time)</label>
+                <input type="text" id="admin-stay-departure-${u.id}" placeholder="e.g. Mar 22, 11:00 AM — SW 5678" value="${stay && stay.departure ? escapeHtml(stay.departure) : ''}" style="font-size:12px;padding:6px 8px;">
+              </div>
+              <div style="display:flex;align-items:flex-end;">
+                <button class="btn-primary" style="width:auto;padding:6px 14px;font-size:12px;white-space:nowrap;" onclick="saveAdminStay(${u.id})">Save</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+
+    <div class="admin-section">
+      <h3>Member Bios</h3>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Write a short profile for each member. They can edit their own later.</p>
+      ${allUsers.map(u => {
+        return `
+          <div style="background:var(--navy-50,#f6f8fb);border:1px solid var(--navy-100);border-radius:8px;padding:12px;margin-bottom:10px;">
+            <div style="font-weight:700;font-size:13px;color:var(--navy-900);margin-bottom:8px;display:flex;align-items:center;gap:8px;">
+              <div class="mini-avatar" style="width:24px;height:24px;font-size:10px;">${renderAvatar(u)}</div>
+              ${escapeHtml(u.display_name)}
+            </div>
+            <div style="display:flex;gap:8px;">
+              <input type="text" id="admin-bio-${u.id}" maxlength="200" placeholder="Write a bio..." value="${escapeHtml(u.bio || '')}" style="flex:1;font-size:12px;padding:6px 8px;">
+              <button class="btn-primary" style="width:auto;padding:6px 14px;font-size:12px;white-space:nowrap;" onclick="saveAdminBio(${u.id})">Save</button>
+            </div>
+          </div>
+        `;
+      }).join('')}
     </div>
 
     <div class="admin-section">
@@ -1144,6 +1333,9 @@ function navigate(view) {
     loadTournamentData().then(() => render());
   }
   if (view === 'trip') {
+    loadStays().then(() => render());
+  }
+  if (view === 'admin') {
     loadStays().then(() => render());
   }
 }
@@ -1290,9 +1482,14 @@ function confirmSubmit() {
     <div class="modal-card">
       <h3>Submit Bracket?</h3>
       <p>You have ${pickCount} picks. Once submitted, your bracket is locked — no changes allowed. Entry fee: <strong>$${config.entry_fee}</strong></p>
-      <div class="venmo-reminder">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="flex-shrink:0"><path d="M19.5 3.6c.6 1 .9 2 .9 3.3 0 4.1-3.5 9.4-6.3 13.1H8.4L6 3.9l5.1-.5 1.2 9.6c1.1-1.8 2.5-4.6 2.5-6.5 0-1.2-.2-2-.5-2.7L19.5 3.6z" fill="#3D95CE"/></svg>
-        <span>Send $${config.entry_fee} via Venmo to <a href="https://venmo.com/u/Paul-Cummins-5" target="_blank" rel="noopener" style="color:#3D95CE;font-weight:600;">@Paul-Cummins-5</a></span>
+      <div class="venmo-reminder" style="flex-direction:column;align-items:center;text-align:center;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="flex-shrink:0"><path d="M19.5 3.6c.6 1 .9 2 .9 3.3 0 4.1-3.5 9.4-6.3 13.1H8.4L6 3.9l5.1-.5 1.2 9.6c1.1-1.8 2.5-4.6 2.5-6.5 0-1.2-.2-2-.5-2.7L19.5 3.6z" fill="#3D95CE"/></svg>
+          <span>Send $${config.entry_fee} via Venmo — scan to pay</span>
+        </div>
+        <a href="https://venmo.com/u/Paul-Cummins-5" target="_blank" rel="noopener">
+          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQgAAAEICAIAAAAslP2oAAAE/0lEQVR4nO3dQW4lNRRAUYLYEBtgQSyoF8QGWNJnjHQ9sOQnVyXnDFH6p9LkylK9tv31+Xx+A/7v99sPAE8kDAjCgCAMCMKAIAwIwoAgDAjCgCAMCMKAIAwIwoAgDAjCgPDH7h/469e/E89x3D9//5n/fff5V58z7dTf8/Tzv/33YcWKAUEYEIQBQRgQhAFBGBCEAWF7jrHylvf9p+Ybu6af89bXr7zl92HFigFBGBCEAUEYEIQBQRgQhAHh2Bxj5Wn7CnafZ/q9/urzp5/z1j6Kp/0+rFgxIAgDgjAgCAOCMCAIA4IwIIzPMZ5m9/33qTnD9H6G3ee8tV/iLawYEIQBQRgQhAFBGBCEAUEYEH7cHOOUp+2veNq+i7ezYkAQBgRhQBAGBGFAEAYEYUAYn2M87d/939qfcGp/xds97fdhxYoBQRgQhAFBGBCEAUEYEIQB4dgc47u+d5926x7uU8+z+zlvYcWAIAwIwoAgDAjCgCAMCMKA8PX5fG4/wyOcuu/i1n3bb9nn8BZWDAjCgCAMCMKAIAwIwoAgDAjb+zHesn9g5dR926fuu3jL9901va9j+vfNigFBGBCEAUEYEIQBQRgQhAFhe45x6z7p6XnI0/ZXrEy/v3/7z3uKFQOCMCAIA4IwIAgDgjAgCAPCtXu+b+1P2P38U6bnCbtOff6tezOmfx+sGBCEAUEYEIQBQRgQhAFBGBC278d42v3NT5uT/LT9EtNu3fthxYAgDAjCgCAMCMKAIAwIwoBwbD/GrTnArfsfpt+v37oX4tY5Uae4HwMGCQOCMCAIA4IwIAgDgjAgHJtj3Lpve2V37jG9L+K7nlt1a7+H+zFgkDAgCAOCMCAIA4IwIAgDwvh+jGmn9i1Mn9f0Xd/3f9f7v60YEIQBQRgQhAFBGBCEAUEYELbvx7hl+pylp713f/vX77o1B1uxYkAQBgRhQBAGBGFAEAYEYUC4dq7Ure976jylXbf+fqbv09jlfgx4MWFAEAYEYUAQBgRhQBAGhGvnSr1ln8Cte8Rv3V9xa76xcmv+Y8WAIAwIwoAgDAjCgCAMCMKAsD3HmD5HaHq+sfKWe8p3v/7WXGj6c1bcjwGDhAFBGBCEAUEYEIQBQRgQrt2PcWufw8rT7oW4NZ+Z9rR7MFasGBCEAUEYEIQBQRgQhAFBGBCu7cc45dY85C3zhKc95/S+jlP/f60YEIQBQRgQhAFBGBCEAUEYEK7tx7jl1nlKu6b3e+x+37f83O75hkHCgCAMCMKAIAwIwoAgDAiv348xcuve8d3Pf7tTc4OnnTdlxYAgDAjCgCAMCMKAIAwIwoCwPcdYufUeevqcoqfdn71y6/ylp80fTrFiQBAGBGFAEAYEYUAQBgRhQDg2x1i5dT7SKbfOU5o+5+pp+0luzX9WrBgQhAFBGBCEAUEYEIQBQRgQxucYbzG9P2F6bjB9vtOpz5/+uU7NN6wYEIQBQRgQhAFBGBCEAUEYEH7cHONp5z6tvOU+8lOm5yG7rBgQhAFBGBCEAUEYEIQBQRgQvj6fz9YfmL5vYdet55l+jz59ntXT7uvY/ZxpVgwIwoAgDAjCgCAMCMKAIAwIx/ZjTL/XP2X6/KVd0+csveU+71tzm6muGBCEAUEYEIQBQRgQhAFBGBC292PAT2DFgCAMCMKAIAwIwoAgDAjCgCAMCMKAIAwIwoAgDAjCgCAMCMKAIAwI/wFnWCQ+2BjRmgAAAABJRU5ErkJggg==" alt="Venmo QR" style="width:120px;height:120px;border-radius:8px;border:2px solid #e8f4fd;" />
+        </a>
       </div>
       <div class="modal-buttons">
         <button class="btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
