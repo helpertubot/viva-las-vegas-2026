@@ -847,6 +847,162 @@ def delete_bet(bet_id: int, viewer_id: int = 0):
     cur.close()
     return {"deleted": bet_id}
 
+# ---- Puter Bets ----
+PUTER_USER_ID = 12  # Puter's user ID
+PUTER_INITIAL_BANKROLL = 500.0
+
+@app.get("/api/puter/bets")
+def list_puter_bets():
+    """List all Puter bets and bankroll status."""
+    cur = get_cursor()
+    cur.execute("""
+        SELECT b.*,
+            taker.display_name as taker_name
+        FROM bets b
+        LEFT JOIN users taker ON b.taker_id = taker.id
+        WHERE b.creator_id = %s
+        ORDER BY b.created_at DESC
+    """, (PUTER_USER_ID,))
+    bets = fetchall_dict(cur)
+    # Get current balance
+    cur.execute("SELECT balance_after FROM puter_ledger ORDER BY id DESC LIMIT 1")
+    row = cur.fetchone()
+    balance = row[0] if row else PUTER_INITIAL_BANKROLL
+    # Get ledger
+    cur.execute("SELECT * FROM puter_ledger ORDER BY id DESC LIMIT 20")
+    ledger = fetchall_dict(cur)
+    cur.close()
+    return {"bets": bets, "balance": balance, "initial_bankroll": PUTER_INITIAL_BANKROLL, "ledger": ledger}
+
+@app.post("/api/puter/bets/{bet_id}/take")
+def take_puter_bet(bet_id: int, viewer_id: int = 0):
+    """User takes a Puter bet. Max 1 active bet per user with Puter."""
+    if viewer_id == 0:
+        raise HTTPException(status_code=400, detail="Must be logged in")
+    if viewer_id == PUTER_USER_ID:
+        raise HTTPException(status_code=400, detail="Puter can't take its own bets")
+    cur = get_cursor()
+    # Check if user already has an active (non-closed) bet with Puter
+    cur.execute("""
+        SELECT COUNT(*) FROM bets
+        WHERE creator_id = %s AND taker_id = %s AND closed = FALSE
+    """, (PUTER_USER_ID, viewer_id))
+    active_count = cur.fetchone()[0]
+    if active_count >= 1:
+        cur.close()
+        raise HTTPException(status_code=400, detail="You already have an active bet with Puter. Wait for it to settle before taking another.")
+    # Verify the bet exists and is open
+    cur.execute("SELECT * FROM bets WHERE id = %s AND creator_id = %s", (bet_id, PUTER_USER_ID))
+    bet = fetchone_dict(cur)
+    if not bet:
+        cur.close()
+        raise HTTPException(status_code=404, detail="Bet not found")
+    if bet["taker_id"]:
+        cur.close()
+        raise HTTPException(status_code=400, detail="Bet already taken")
+    if bet["closed"]:
+        cur.close()
+        raise HTTPException(status_code=400, detail="Bet is already closed")
+    now = time.time()
+    cur.execute("UPDATE bets SET taker_id = %s, taken_at = %s WHERE id = %s", (viewer_id, now, bet_id))
+    db.commit()
+    cur.close()
+    return {"ok": True}
+
+class SettlePuterBetRequest(BaseModel):
+    winner: str  # 'puter' or 'taker'
+
+@app.post("/api/puter/bets/{bet_id}/settle")
+def settle_puter_bet(bet_id: int, req: SettlePuterBetRequest, viewer_id: int = 0):
+    """Admin settles a Puter bet. Updates ledger accordingly."""
+    if viewer_id == 0:
+        raise HTTPException(status_code=400, detail="Must be logged in")
+    cur = get_cursor()
+    # Only admin can settle Puter bets
+    cur.execute("SELECT is_admin FROM users WHERE id = %s", (viewer_id,))
+    viewer_row = fetchone_dict(cur)
+    if not (viewer_row and viewer_row.get("is_admin")):
+        cur.close()
+        raise HTTPException(status_code=403, detail="Only admin can settle Puter bets")
+    # Get the bet
+    cur.execute("SELECT * FROM bets WHERE id = %s AND creator_id = %s", (bet_id, PUTER_USER_ID))
+    bet = fetchone_dict(cur)
+    if not bet:
+        cur.close()
+        raise HTTPException(status_code=404, detail="Puter bet not found")
+    if bet["closed"]:
+        cur.close()
+        raise HTTPException(status_code=400, detail="Bet already settled")
+    if not bet["taker_id"]:
+        cur.close()
+        raise HTTPException(status_code=400, detail="Bet hasn't been taken yet")
+    # Get current balance
+    cur.execute("SELECT balance_after FROM puter_ledger ORDER BY id DESC LIMIT 1")
+    row = cur.fetchone()
+    current_balance = row[0] if row else PUTER_INITIAL_BANKROLL
+    # Update balance
+    amount = bet["amount"]
+    if req.winner == 'puter':
+        new_balance = current_balance + amount
+        desc = f"Won bet #{bet_id}: +${amount}"
+    else:
+        new_balance = current_balance - amount
+        desc = f"Lost bet #{bet_id}: -${amount}"
+    # Record in ledger
+    cur.execute(
+        "INSERT INTO puter_ledger (bet_id, amount, description, balance_after) VALUES (%s, %s, %s, %s)",
+        (bet_id, amount if req.winner == 'puter' else -amount, desc, new_balance)
+    )
+    # Close the bet
+    now = time.time()
+    cur.execute("UPDATE bets SET closed = TRUE, closed_at = %s WHERE id = %s", (now, bet_id))
+    db.commit()
+    cur.close()
+    return {"ok": True, "new_balance": new_balance, "winner": req.winner}
+
+class CreatePuterBetRequest(BaseModel):
+    description: str
+    amount: float
+    about_user_id: Optional[int] = None
+
+@app.post("/api/puter/bets")
+def create_puter_bet(req: CreatePuterBetRequest, viewer_id: int = 0):
+    """Admin (or cron) creates a bet on behalf of Puter."""
+    # Allow admin or internal calls (viewer_id=PUTER_USER_ID for cron)
+    if viewer_id != 0:
+        cur_check = get_cursor()
+        cur_check.execute("SELECT is_admin FROM users WHERE id = %s", (viewer_id,))
+        row = fetchone_dict(cur_check)
+        cur_check.close()
+        if not (row and row.get("is_admin")) and viewer_id != PUTER_USER_ID:
+            raise HTTPException(status_code=403, detail="Only admin can create Puter bets")
+    cur = get_cursor()
+    # Check Puter's open bet count
+    cur.execute("SELECT COUNT(*) FROM bets WHERE creator_id = %s AND closed = FALSE", (PUTER_USER_ID,))
+    open_count = cur.fetchone()[0]
+    # Get number of non-Puter members
+    cur.execute("SELECT COUNT(*) FROM users WHERE id != %s", (PUTER_USER_ID,))
+    member_count = cur.fetchone()[0]
+    if open_count >= member_count:
+        cur.close()
+        raise HTTPException(status_code=400, detail=f"Puter already has {open_count} open bets (max {member_count})")
+    # Check balance
+    cur.execute("SELECT balance_after FROM puter_ledger ORDER BY id DESC LIMIT 1")
+    row = cur.fetchone()
+    balance = row[0] if row else PUTER_INITIAL_BANKROLL
+    if req.amount > balance:
+        cur.close()
+        raise HTTPException(status_code=400, detail=f"Not enough bankroll. Balance: ${balance}")
+    now = time.time()
+    cur.execute(
+        "INSERT INTO bets (creator_id, about_user_id, bet_type, description, amount, created_at) VALUES (%s, %s, 'puter', %s, %s, %s) RETURNING id",
+        (PUTER_USER_ID, req.about_user_id, req.description, req.amount, now)
+    )
+    bet_id = cur.fetchone()[0]
+    db.commit()
+    cur.close()
+    return {"id": bet_id}
+
 @app.get("/api/config")
 def get_config():
     cur = get_cursor()

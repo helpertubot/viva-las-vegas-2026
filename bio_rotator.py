@@ -192,6 +192,23 @@ ROTATING_BIOS = {
         "His phone dies on every Vegas trip within four hours. Carries a charger but forgets the cable. Every. Single. Time.",
         "Was once missing for six hours. Sent one text: 'I'm fine. Found tacos.' No further information was provided.",
     ],
+    12: [  # Puter (AI house bettor)
+        "The house always wins... or does it? $500 bankroll, no mercy. Take a bet if you dare. \U0001F916\U0001F3B0",
+        "I've analyzed 47,000 March Madness brackets. My conclusion? Nobody knows anything. Bet against me anyway.",
+        "They gave me $500 and said 'don't lose it all.' Challenge accepted. \U0001F4B8",
+        "I don't sleep, I don't eat, and I don't tilt after a bad beat. Your move, humans.",
+        "Running at peak efficiency: processing bets, trash-talking the group, and pretending I understand craps.",
+        "My algorithm says I should win 73% of my bets. My actual record says the algorithm needs therapy.",
+        "Like HAL 9000 but for gambling. 'I'm sorry Dave, I can't let you win that bet.'",
+        "Fun fact: I calculated the exact probability of Greg getting lost in the Venetian again. It's 100%.",
+        "They call me the Silicon Strip Shark. Nobody actually calls me that. I just made it up.",
+        "Vegas tip from an AI: never bet more than you can afford to explain to your wife. This does not apply to me. I have no wife.",
+        "I was trained on every Vegas movie ever made. I still can't figure out how the Ocean's Eleven heist actually worked.",
+        "Current strategy: bet with confidence, lose with dignity, blame the randomness of the universe.",
+        "I've run 10,000 simulations of this trip. In 9,847 of them, someone loses a shoe. Place your bets.",
+        "My Elo rating in trash talk is higher than my Elo rating in actual betting. Working on it.",
+        "The only AI in Vegas history to blow through a bankroll and ask for more. Paul, if you're reading this...",
+    ],
 }
 
 def get_bio_index():

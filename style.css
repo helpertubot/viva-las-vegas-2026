@@ -332,6 +332,78 @@ img { display: block; max-width: 100%; }
   font-size: 13px;
 }
 
+/* === PUTER BETS === */
+.bets-section.puter-section {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  border: 1px solid #334155;
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  color: #e2e8f0;
+}
+.bets-section.puter-section h3 { color: #f1f5f9; margin: 0; }
+.puter-section .empty-state { color: #94a3b8; }
+.puter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.puter-bankroll {
+  font-size: 14px;
+  font-weight: 600;
+}
+.puter-balance { color: #a5f3fc; margin-right: 6px; }
+.puter-up { color: #4ade80; }
+.puter-down { color: #f87171; }
+.puter-rules-toggle { margin-bottom: 12px; }
+.puter-rules-toggle a {
+  color: #93c5fd;
+  font-size: 13px;
+  text-decoration: none;
+}
+.puter-rules-toggle a:hover { text-decoration: underline; }
+.puter-rules {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: var(--radius-md);
+  padding: 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.puter-rules h4 { color: #f1f5f9; margin: 0 0 10px 0; font-size: 14px; }
+.puter-rules ul { margin: 0; padding-left: 18px; }
+.puter-rules li { margin-bottom: 6px; color: #cbd5e1; }
+.puter-rules strong { color: #e2e8f0; }
+.puter-group-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+  margin-top: 12px;
+}
+.puter-bet {
+  background: #1e293b;
+  border: 1px solid #334155;
+}
+.puter-bet .bet-header { border-bottom-color: #334155; }
+.puter-bet .bet-about { color: #a5f3fc; }
+.puter-bet .bet-amount { color: #fbbf24; }
+.puter-bet .bet-description { color: #e2e8f0; }
+.puter-bet .bet-footer { color: #94a3b8; }
+.puter-bet .bet-status-open { color: #94a3b8; }
+.puter-bet .bet-status-taken { color: #4ade80; }
+.puter-bet .bet-status-closed { color: #64748b; }
+.puter-take {
+  background: #f59e0b !important;
+  color: #0f172a !important;
+  font-weight: 700;
+}
+.puter-take:hover { background: #d97706 !important; }
+.puter-my-bet { border-left: 3px solid #4ade80; }
+
 /* === MAIN LAYOUT === */
 .main-content {
   max-width: 1200px;

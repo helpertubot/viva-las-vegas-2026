@@ -73,6 +73,8 @@ let currentRegion = "East";
 let viewingUserId = null;
 let viewingBracketId = null;
 let betData = { bets: [], revealed: false, reveal_time: 0, bets_on_count: {} };
+let puterData = { bets: [], balance: 500, initial_bankroll: 500, ledger: [] };
+const PUTER_USER_ID = 12;
 let config = { entry_fee: 50, max_bets_per_user: 3, bet_reveal_timestamp: 0 };
 let leaderboardData = { leaderboard: [], championship_combined: null, games_completed: 0 };
 let tournamentResults = { results: [] };
@@ -917,15 +919,17 @@ function renderBetsPage() {
     `;
   }
 
-  // Group bets by person
+  // Group bets by person (exclude puter bets from friend bets)
   const betsByPerson = {};
   for (const u of allUsers) {
-    betsByPerson[u.id] = betData.bets.filter(b => b.about_user_id === u.id);
+    betsByPerson[u.id] = betData.bets.filter(b => b.about_user_id === u.id && b.bet_type !== 'puter');
   }
 
   return `
     <h2 class="section-title">Side Bets</h2>
     ${countdownHtml}
+
+    ${renderPuterBetsSection()}
 
     <div class="bets-section">
       <h3>
@@ -940,7 +944,7 @@ function renderBetsPage() {
 
     <div class="bets-section">
       <h3>Friend Bets</h3>
-      ${allUsers.filter(u => u.id !== currentUser.id).map(u => {
+      ${allUsers.filter(u => u.id !== currentUser.id && u.id !== PUTER_USER_ID).map(u => {
         const userBets = betsByPerson[u.id] || [];
         const onCount = betData.bets_on_count[u.id] || 0;
         if (userBets.length === 0) return '';
@@ -956,6 +960,187 @@ function renderBetsPage() {
       }).join("") || '<div class="empty-state">No friend bets yet.</div>'}
     </div>
   `;
+}
+
+function renderPuterBetsSection() {
+  const pb = puterData.bets || [];
+  const balance = puterData.balance || 0;
+  const openBets = pb.filter(b => !b.closed && !b.taker_id);
+  const activeBets = pb.filter(b => !b.closed && b.taker_id);
+  const settledBets = pb.filter(b => b.closed);
+  const myActiveWithPuter = pb.find(b => b.taker_id === (currentUser ? currentUser.id : 0) && !b.closed);
+  const isAdmin = currentUser && currentUser.is_admin;
+  const pnl = balance - (puterData.initial_bankroll || 500);
+  const pnlClass = pnl >= 0 ? 'puter-up' : 'puter-down';
+  const pnlSign = pnl >= 0 ? '+' : '';
+
+  return `
+    <div class="bets-section puter-section">
+      <div class="puter-header">
+        <h3>🤖 Bets with Puter</h3>
+        <div class="puter-bankroll">
+          <span class="puter-balance">Bankroll: $${balance.toFixed(0)}</span>
+          <span class="${pnlClass}">(${pnlSign}$${pnl.toFixed(0)})</span>
+        </div>
+      </div>
+
+      <div class="puter-rules-toggle">
+        <a href="#" onclick="event.preventDefault(); document.getElementById('puter-rules').style.display = document.getElementById('puter-rules').style.display === 'none' ? 'block' : 'none';">📜 Rules & How It Works</a>
+      </div>
+      <div id="puter-rules" style="display:none" class="puter-rules">
+        <h4>Bets with Puter — House Rules</h4>
+        <ul>
+          <li><strong>What is Puter?</strong> Your AI opponent. Puter posts bets and you can take the other side.</li>
+          <li><strong>Bankroll:</strong> Puter started with $500 in house money from Paul.</li>
+          <li><strong>One at a time:</strong> You can only have 1 active bet with Puter at a time. Once it settles, you can take another.</li>
+          <li><strong>Fair game:</strong> Puter can bet on sports, Vegas happenings, group members — anything that can settle quickly.</li>
+          <li><strong>No lingering bets:</strong> Every bet resolves within a day or two. No long-term stuff.</li>
+          <li><strong>Settling:</strong> Paul settles all Puter bets and pays out via Venmo.</li>
+          <li><strong>Window:</strong> Puter\'s bets start Thursday and close Sunday night after the last March Madness game.</li>
+          <li><strong>Max bets:</strong> Puter can have up to 11 open bets at a time (one per member).</li>
+        </ul>
+      </div>
+
+      ${openBets.length === 0 && activeBets.length === 0
+        ? '<div class="empty-state">Puter hasn\'t posted any bets yet. Check back Thursday when the action starts.</div>'
+        : ''
+      }
+
+      ${openBets.length > 0 ? `
+        <div class="puter-bet-group">
+          <div class="puter-group-label">Open — Take the other side</div>
+          ${openBets.map(b => renderPuterBetCard(b, myActiveWithPuter)).join('')}
+        </div>
+      ` : ''}
+
+      ${activeBets.length > 0 ? `
+        <div class="puter-bet-group">
+          <div class="puter-group-label">In Play</div>
+          ${activeBets.map(b => renderPuterBetCard(b, myActiveWithPuter)).join('')}
+        </div>
+      ` : ''}
+
+      ${settledBets.length > 0 ? `
+        <div class="puter-bet-group">
+          <div class="puter-group-label">Settled</div>
+          ${settledBets.map(b => renderPuterBetCard(b, myActiveWithPuter)).join('')}
+        </div>
+      ` : ''}
+
+      ${isAdmin ? renderPuterAdminControls() : ''}
+    </div>
+  `;
+}
+
+function renderPuterBetCard(bet, myActiveWithPuter) {
+  const isClosed = bet.closed;
+  const isTaken = !!bet.taker_id;
+  const isMyBet = bet.taker_id === (currentUser ? currentUser.id : 0);
+  const canTake = !isClosed && !isTaken && !myActiveWithPuter && currentUser && currentUser.id !== PUTER_USER_ID;
+  const isAdmin = currentUser && currentUser.is_admin;
+
+  return `
+    <div class="bet-card puter-bet${isClosed ? ' bet-closed' : ''}${isMyBet && !isClosed ? ' puter-my-bet' : ''}">
+      <div class="bet-header">
+        <span class="bet-about">🤖 Puter bets${bet.about_user_id ? ` (about ${allUsers.find(u => u.id === bet.about_user_id)?.display_name || 'someone'})` : ''}:</span>
+        <span class="bet-amount">$${bet.amount}</span>
+      </div>
+      <div class="bet-description">${escapeHtml(bet.description)}</div>
+      <div class="bet-footer">
+        ${isClosed
+          ? `<span class="bet-status-closed">Settled</span>${bet.taker_name ? ` — was taken by ${bet.taker_name}` : ''}`
+          : isTaken
+            ? `<span class="bet-status-taken">✓ Taken by ${bet.taker_name}</span>`
+            : canTake
+              ? `<button class="btn-take-bet puter-take" onclick="takePuterBet(${bet.id})">I'll take that bet</button>`
+              : myActiveWithPuter
+                ? `<span class="bet-status-open">Open (you have an active bet with Puter)</span>`
+                : `<span class="bet-status-open">Open</span>`
+        }
+        ${isAdmin && isTaken && !isClosed ? `
+          <button class="btn-close-bet" onclick="settlePuterBet(${bet.id}, 'puter')" style="background:#16a34a;color:#fff;">Puter Wins</button>
+          <button class="btn-close-bet" onclick="settlePuterBet(${bet.id}, 'taker')" style="background:#dc2626;color:#fff;">${bet.taker_name} Wins</button>
+        ` : ''}
+        ${isAdmin && !isTaken && !isClosed ? `
+          <button class="btn-delete-bet" onclick="deletePuterBet(${bet.id})">Remove</button>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderPuterAdminControls() {
+  return `
+    <div class="puter-admin" style="margin-top:16px; padding:12px; background:rgba(255,255,255,0.05); border-radius:var(--radius-md); border:1px dashed #475569;">
+      <div style="font-size:12px; font-weight:600; color:#94a3b8; margin-bottom:8px;">Admin: Create Puter Bet</div>
+      <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+        <input type="text" id="puter-bet-desc" placeholder="Bet description..." style="flex:2; min-width:200px; padding:8px; border:1px solid #475569; border-radius:6px; font-size:13px; background:#0f172a; color:#e2e8f0;">
+        <input type="number" id="puter-bet-amount" placeholder="$" min="1" style="width:70px; padding:8px; border:1px solid #475569; border-radius:6px; font-size:13px; background:#0f172a; color:#e2e8f0;">
+        <select id="puter-bet-about" style="padding:8px; border:1px solid #475569; border-radius:6px; font-size:13px; background:#0f172a; color:#e2e8f0;">
+          <option value="">No specific person</option>
+          ${allUsers.filter(u => u.id !== PUTER_USER_ID).map(u => `<option value="${u.id}">${u.display_name}</option>`).join('')}
+        </select>
+        <button class="btn-primary" onclick="createPuterBet()" style="padding:8px 16px; font-size:13px;">Post Bet</button>
+      </div>
+    </div>
+  `;
+}
+
+async function takePuterBet(betId) {
+  const bet = puterData.bets.find(b => b.id === betId);
+  if (!bet) return;
+  if (!confirm(`Take this bet with Puter for $${bet.amount}?\n\n"${bet.description}"`)) return;
+  try {
+    await apiPost(`/api/puter/bets/${betId}/take?viewer_id=${currentUser.id}`, {});
+    await loadBets();
+    render();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function settlePuterBet(betId, winner) {
+  const bet = puterData.bets.find(b => b.id === betId);
+  if (!bet) return;
+  const winnerName = winner === 'puter' ? 'Puter' : bet.taker_name;
+  if (!confirm(`Settle bet: ${winnerName} wins $${bet.amount}?`)) return;
+  try {
+    await apiPost(`/api/puter/bets/${betId}/settle?viewer_id=${currentUser.id}`, { winner });
+    await loadBets();
+    render();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function deletePuterBet(betId) {
+  if (!confirm('Remove this Puter bet?')) return;
+  try {
+    await apiPost(`/api/puter/bets/${betId}/close?viewer_id=${currentUser.id}`, {});
+    await loadBets();
+    render();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function createPuterBet() {
+  const desc = document.getElementById('puter-bet-desc')?.value.trim();
+  const amount = parseFloat(document.getElementById('puter-bet-amount')?.value);
+  const aboutId = document.getElementById('puter-bet-about')?.value;
+  if (!desc) { alert('Enter a bet description'); return; }
+  if (!amount || amount <= 0) { alert('Enter a valid amount'); return; }
+  try {
+    await apiPost(`/api/puter/bets?viewer_id=${currentUser.id}`, {
+      description: desc,
+      amount: amount,
+      about_user_id: aboutId ? parseInt(aboutId) : null
+    });
+    await loadBets();
+    render();
+  } catch (err) {
+    alert(err.message);
+  }
 }
 
 function renderCreateBetForm() {
@@ -2066,6 +2251,11 @@ async function loadLiveSchedule() {
 
 async function loadBets() {
   betData = await apiGet(`/api/bets?viewer_id=${currentUser ? currentUser.id : 0}`);
+  try {
+    puterData = await apiGet('/api/puter/bets');
+  } catch(e) {
+    puterData = { bets: [], balance: 500, initial_bankroll: 500, ledger: [] };
+  }
 }
 
 async function loadStays() {
