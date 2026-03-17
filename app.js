@@ -675,12 +675,27 @@ async function refreshLeaderboard() {
 }
 
 // ===== LIVE SCORES =====
+// All times displayed in Las Vegas time (America/Los_Angeles)
+const VEGAS_TZ = 'America/Los_Angeles';
+
 function formatGameTime(datetimeStr) {
   if (!datetimeStr) return '';
   try {
     const d = new Date(datetimeStr);
     if (isNaN(d.getTime())) return '';
-    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: VEGAS_TZ });
+  } catch (e) { return ''; }
+}
+
+function getVegasDate(datetimeStr) {
+  // Returns YYYY-MM-DD in Vegas/Pacific time
+  if (!datetimeStr) return '';
+  try {
+    const d = new Date(datetimeStr);
+    if (isNaN(d.getTime())) return '';
+    // Use Intl to get the correct local date parts
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: VEGAS_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    return parts; // returns YYYY-MM-DD
   } catch (e) { return ''; }
 }
 
@@ -714,17 +729,16 @@ function renderLiveScores() {
     return (a.game_datetime || '').localeCompare(b.game_datetime || '');
   });
 
-  // Group by date
+  // Group by date in Vegas/Pacific time (not UTC)
   const grouped = {};
   for (const g of sorted) {
-    const day = g.game_date || 'Unknown';
+    const day = (g.game_datetime ? getVegasDate(g.game_datetime) : g.game_date) || 'Unknown';
     if (!grouped[day]) grouped[day] = [];
     grouped[day].push(g);
   }
 
-  // Determine today's date in user's timezone (PDT)
-  const now = new Date();
-  const todayStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+  // Determine today's date in Vegas time
+  const todayStr = getVegasDate(new Date().toISOString());
 
   // Find the "active" day: today if it has games, otherwise the first day with upcoming/live games, otherwise first day
   const dayKeys = Object.keys(grouped);
