@@ -677,6 +677,279 @@ img { display: block; max-width: 100%; }
 }
 
 /* === BRACKET PAGE === */
+
+/* -- Brackets list page -- */
+.brackets-page {}
+
+.brackets-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.brackets-page-header h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--navy-900);
+  letter-spacing: -0.02em;
+}
+
+.btn-create-bracket {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--navy-900);
+  color: white;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 600;
+  transition: all var(--transition);
+}
+.btn-create-bracket:hover { background: var(--navy-800); transform: translateY(-1px); box-shadow: var(--shadow-md); }
+
+.bracket-cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.bracket-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.bracket-card:hover {
+  border-color: var(--navy-400);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.bracket-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.bracket-card-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bracket-card-label {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--navy-900);
+  letter-spacing: -0.01em;
+}
+
+.bracket-card-rename {
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition);
+  display: flex;
+  align-items: center;
+}
+.bracket-card-rename:hover { color: var(--navy-600); background: var(--gray-100); }
+
+.bracket-card-badge {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+}
+.bracket-card-badge.submitted { background: var(--green-100); color: var(--green-600); }
+.bracket-card-badge.draft { background: var(--orange-100); color: var(--orange-600); }
+
+.bracket-card-stats {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.bracket-card-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bracket-card-stat-value {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--navy-800);
+  letter-spacing: -0.01em;
+}
+.bracket-card-stat-value.highlight { color: var(--orange-500); }
+
+.bracket-card-stat-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.bracket-card-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--navy-600);
+  font-size: 13px;
+  font-weight: 600;
+}
+.bracket-card:hover .bracket-card-action { color: var(--navy-800); }
+
+.brackets-hint {
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 12px;
+  margin-top: 16px;
+}
+
+/* -- Brackets empty state -- */
+.brackets-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 60px 24px;
+}
+.brackets-empty-icon {
+  margin-bottom: 20px;
+  opacity: 0.5;
+}
+.brackets-empty h3 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--navy-900);
+  margin-bottom: 8px;
+}
+.brackets-empty p {
+  color: var(--text-muted);
+  font-size: 14px;
+  max-width: 320px;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+/* -- Bracket editor page -- */
+.bracket-editor-page {}
+
+.bracket-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 12px;
+  padding: 0;
+  background: none;
+  transition: color var(--transition);
+}
+.bracket-back:hover { color: var(--navy-700); }
+
+.bracket-switcher {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+}
+
+.bracket-tab {
+  padding: 8px 16px;
+  border-radius: var(--radius-full);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--gray-100);
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+.bracket-tab:hover { color: var(--text); background: var(--gray-200); }
+.bracket-tab.active {
+  background: var(--navy-900);
+  color: white;
+}
+.bracket-tab .tab-check {
+  margin-left: 4px;
+  font-size: 11px;
+}
+.bracket-tab.add-tab {
+  color: var(--navy-600);
+  font-weight: 700;
+  font-size: 16px;
+  padding: 6px 14px;
+}
+.bracket-tab.add-tab:hover { background: var(--navy-100); color: var(--navy-800); }
+
+.bracket-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.bracket-editor-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.bracket-name-editable {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--navy-900);
+  letter-spacing: -0.02em;
+  cursor: pointer;
+  border-bottom: 1px dashed var(--navy-300);
+  transition: border-color var(--transition);
+}
+.bracket-name-editable:hover { border-color: var(--navy-600); }
+
+.draft-progress {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--gray-100);
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+}
+
+.bracket-score-badge {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--navy-700);
+}
+
+.bracket-editor-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Legacy bracket-header (for view-bracket page) */
 .bracket-header {
   display: flex;
   align-items: center;
@@ -713,7 +986,7 @@ img { display: block; max-width: 100%; }
 }
 
 .btn-submit-bracket {
-  padding: 10px 24px;
+  padding: 10px 20px;
   background: var(--orange-500);
   color: white;
   border-radius: var(--radius-md);
@@ -726,7 +999,7 @@ img { display: block; max-width: 100%; }
 .btn-submit-bracket:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-save-draft {
-  padding: 10px 20px;
+  padding: 10px 16px;
   background: var(--gray-100);
   color: var(--text);
   border-radius: var(--radius-md);
@@ -1527,6 +1800,10 @@ img { display: block; max-width: 100%; }
   .profile-stats { justify-content: center; }
   .form-row { grid-template-columns: 1fr; }
   .bracket-header { flex-direction: column; align-items: flex-start; }
+  .bracket-editor-header { flex-direction: column; align-items: flex-start; }
+  .bracket-editor-actions { width: 100%; }
+  .bracket-editor-actions .btn-submit-bracket,
+  .bracket-editor-actions .btn-save-draft { flex: 1; text-align: center; }
 
   /* Mobile bottom nav */
   .mobile-nav {
@@ -1739,6 +2016,7 @@ img { display: block; max-width: 100%; }
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+  flex-wrap: wrap;
 }
 
 .tiebreaker-label {
@@ -1746,6 +2024,11 @@ img { display: block; max-width: 100%; }
   font-weight: 600;
   color: var(--navy-700);
   white-space: nowrap;
+}
+
+.tiebreaker-desc {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .tiebreaker-input {

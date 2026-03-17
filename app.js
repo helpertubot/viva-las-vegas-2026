@@ -418,27 +418,91 @@ function renderMyBracketsPage() {
     if (bracket) {
       return renderBracketEditor(bracket, myBrackets);
     }
-    // Bracket not found, reset
     currentBracketId = null;
   }
 
-  // Auto-open the first bracket if user has any
-  if (myBrackets.length > 0) {
-    // Prefer the first submitted bracket, otherwise the first one
-    const defaultBracket = myBrackets.find(b => b.submitted) || myBrackets[0];
-    currentBracketId = defaultBracket.id;
-    currentPicks = defaultBracket.submitted ? {} : { ...(defaultBracket.picks || {}) };
-    currentTiebreaker = defaultBracket.tiebreaker_score || null;
-    return renderBracketEditor(defaultBracket, myBrackets);
+  const canCreateMore = myBrackets.length < 3;
+  const hasTournamentStarted = (config.tournament_started || false);
+
+  // No brackets — empty state
+  if (myBrackets.length === 0) {
+    return `
+      <div class="brackets-page">
+        <div class="brackets-empty">
+          <div class="brackets-empty-icon">
+            <svg viewBox="0 0 48 48" fill="none" width="48" height="48"><rect x="4" y="6" width="16" height="8" rx="2" stroke="var(--navy-400)" stroke-width="2"/><rect x="4" y="20" width="16" height="8" rx="2" stroke="var(--navy-400)" stroke-width="2"/><rect x="4" y="34" width="16" height="8" rx="2" stroke="var(--navy-400)" stroke-width="2"/><rect x="28" y="13" width="16" height="8" rx="2" stroke="var(--navy-400)" stroke-width="2"/><rect x="28" y="27" width="16" height="8" rx="2" stroke="var(--navy-400)" stroke-width="2"/><path d="M20 10h4v17h4M20 24h4M20 38h8v-7" stroke="var(--navy-300)" stroke-width="2" fill="none"/></svg>
+          </div>
+          <h3>No brackets yet</h3>
+          <p>Create your March Madness bracket and lock in your picks before the tournament starts.</p>
+          <button class="btn-primary orange" onclick="createNewBracket()">Create Your Bracket</button>
+        </div>
+      </div>
+    `;
   }
 
-  // No brackets at all
+  // Has brackets — show bracket cards with option to open
   return `
-    <div class="bracket-header">
-      <h2>My Brackets</h2>
-      <button class="btn-secondary" onclick="createNewBracket()" style="font-size:13px; padding:8px 16px;">+ New Bracket</button>
+    <div class="brackets-page">
+      <div class="brackets-page-header">
+        <h2>My Brackets</h2>
+        ${canCreateMore ? `<button class="btn-create-bracket" onclick="createNewBracket()"><svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"/></svg> New Bracket</button>` : ''}
+      </div>
+      <div class="bracket-cards">
+        ${myBrackets.map(b => {
+          const pickCount = Object.keys(b.picks || {}).length;
+          const lbEntry = (leaderboardData.leaderboard || []).find(e => e.bracket_id === b.id);
+          const score = lbEntry ? lbEntry.score : null;
+          const rank = lbEntry ? lbEntry.rank : null;
+          return `
+            <div class="bracket-card" onclick="openBracket(${b.id})">
+              <div class="bracket-card-top">
+                <div class="bracket-card-name">
+                  <span class="bracket-card-label">${escapeHtml(b.label)}</span>
+                  <span class="bracket-card-rename" onclick="event.stopPropagation(); startRenameBracket(${b.id}, this.parentElement.querySelector('.bracket-card-label'))" title="Rename">
+                    <svg viewBox="0 0 16 16" fill="currentColor" width="12" height="12"><path d="M11.13 1.72a1.77 1.77 0 012.5 2.5L5.76 12.1l-3.28.82.82-3.28 7.83-7.92zM10 3.5l2 2"/></svg>
+                  </span>
+                </div>
+                ${b.submitted
+                  ? `<span class="bracket-card-badge submitted">Submitted</span>`
+                  : `<span class="bracket-card-badge draft">Draft</span>`
+                }
+              </div>
+              <div class="bracket-card-stats">
+                <div class="bracket-card-stat">
+                  <span class="bracket-card-stat-value">${pickCount}</span>
+                  <span class="bracket-card-stat-label">Picks</span>
+                </div>
+                ${b.tiebreaker_score !== null ? `
+                  <div class="bracket-card-stat">
+                    <span class="bracket-card-stat-value">${b.tiebreaker_score}</span>
+                    <span class="bracket-card-stat-label">Tiebreaker</span>
+                  </div>
+                ` : ''}
+                ${hasTournamentStarted && score !== null ? `
+                  <div class="bracket-card-stat">
+                    <span class="bracket-card-stat-value highlight">${score}</span>
+                    <span class="bracket-card-stat-label">Points</span>
+                  </div>
+                ` : ''}
+                ${hasTournamentStarted && rank !== null ? `
+                  <div class="bracket-card-stat">
+                    <span class="bracket-card-stat-value">#${rank}</span>
+                    <span class="bracket-card-stat-label">Rank</span>
+                  </div>
+                ` : ''}
+              </div>
+              <div class="bracket-card-action">
+                <span>${b.submitted ? 'View Bracket' : 'Edit Bracket'}</span>
+                <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd"/></svg>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+      ${canCreateMore ? `
+        <p class="brackets-hint">You can create up to 3 brackets. Each submitted bracket costs $${config.entry_fee}.</p>
+      ` : ''}
     </div>
-    <div class="empty-state">You have no brackets yet. Create one to get started!</div>
   `;
 }
 
@@ -457,52 +521,65 @@ function renderBracketEditor(bracket, myBrackets) {
     (lbEntry.pending_picks || []).forEach(k => pickStatus[k] = 'pending');
   }
 
-  const selectorHtml = myBrackets.length > 1 ? `
-    <select onchange="openBracket(parseInt(this.value))" style="font-size:13px; padding:6px 10px; border-radius:6px; border:1px solid var(--navy-200); margin-right:8px;">
-      ${myBrackets.map(b => `<option value="${b.id}" ${b.id === bracket.id ? 'selected' : ''}>${escapeHtml(b.label)}${b.submitted ? ' \u2714' : ''}</option>`).join("")}
-    </select>
-  ` : '';
-
   const canCreateMore = myBrackets.length < 3;
 
-  const nameEditHtml = `
-    <span class="bracket-name-editable" onclick="startRenameBracket(${bracket.id}, this)" title="Click to rename" style="cursor:pointer;border-bottom:1px dashed var(--navy-300);">${escapeHtml(bracket.label)}</span>
-  `;
+  // Bracket switcher tabs (if multiple brackets)
+  const tabsHtml = myBrackets.length > 1 ? `
+    <div class="bracket-switcher">
+      ${myBrackets.map(b => `
+        <button class="bracket-tab ${b.id === bracket.id ? 'active' : ''}" onclick="openBracket(${b.id})">
+          ${escapeHtml(b.label)}
+          ${b.submitted ? '<span class="tab-check">\u2714</span>' : ''}
+        </button>
+      `).join('')}
+      ${canCreateMore ? `<button class="bracket-tab add-tab" onclick="createNewBracket()">+</button>` : ''}
+    </div>
+  ` : '';
+
+  // Back link
+  const backHtml = `<button class="bracket-back" onclick="closeBracketEditor()">
+    <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clip-rule="evenodd"/></svg>
+    My Brackets
+  </button>`;
 
   return `
-    <div class="bracket-header" style="margin-bottom:4px;">
-      <h2>${selectorHtml}${nameEditHtml}
+    <div class="bracket-editor-page">
+      ${backHtml}
+      ${tabsHtml}
+      <div class="bracket-editor-header">
+        <div class="bracket-editor-title">
+          <span class="bracket-name-editable" onclick="startRenameBracket(${bracket.id}, this)" title="Click to rename">${escapeHtml(bracket.label)}</span>
+          ${locked
+            ? `<span class="locked-badge">\uD83D\uDD12 Submitted</span>`
+            : `<span class="draft-progress">${pickCount}/63 picks</span>`
+          }
+          ${lbEntry && locked ? `<span class="bracket-score-badge">${lbEntry.score} pts</span>` : ''}
+        </div>
+        <div class="bracket-editor-actions">
+          ${locked
+            ? `${canCreateMore ? `<button class="btn-create-bracket" onclick="createNewBracket()"><svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"/></svg> New Bracket</button>` : ''}`
+            : `<button class="btn-save-draft" onclick="saveDraft()">Save Draft</button>
+               <button class="btn-submit-bracket" onclick="confirmSubmit()">Submit ($${config.entry_fee})</button>`
+          }
+        </div>
+      </div>
+      <div class="tiebreaker-row">
+        <label class="tiebreaker-label">Tiebreaker</label>
+        <span class="tiebreaker-desc">Predicted total combined score of the championship game</span>
         ${locked
-          ? `<span style="font-weight:400;font-size:13px;color:var(--text-muted);">\u2014 ${pickCount} picks</span>`
-          : `<span style="font-weight:400;font-size:14px;color:var(--text-muted)">(${pickCount}/63 picks)</span>`
-        }
-      </h2>
-      <div class="bracket-actions">
-        ${locked
-          ? `<span class="locked-badge">🔒 Submitted</span>
-             ${lbEntry ? `<span style="font-size:14px;font-weight:700;color:var(--navy-700);margin-left:8px;">${lbEntry.score} pts</span>` : ''}
-             ${canCreateMore ? `<button class="btn-secondary" onclick="createNewBracket()" style="font-size:12px; padding:6px 12px; margin-left:8px;">+ New Bracket</button>` : ''}`
-          : `<button class="btn-save-draft" onclick="saveDraft()">Save Draft</button>
-             <button class="btn-submit-bracket" onclick="confirmSubmit()">Submit Bracket ($${config.entry_fee})</button>`
+          ? `<span class="tiebreaker-value">${bracket.tiebreaker_score !== null ? bracket.tiebreaker_score : '\u2014'}</span>`
+          : `<input type="number" id="tiebreaker-input" class="tiebreaker-input" placeholder="e.g. 145" min="0" max="500" value="${tbValue || ''}" onchange="currentTiebreaker = this.value ? parseInt(this.value) : null">`
         }
       </div>
-    </div>
-    <div class="tiebreaker-row">
-      <label class="tiebreaker-label">Championship Tiebreaker:</label>
-      <span style="font-size:12px; color:var(--text-muted);">Predicted total combined score</span>
-      ${locked
-        ? `<span class="tiebreaker-value">${bracket.tiebreaker_score !== null ? bracket.tiebreaker_score : 'Not set'}</span>`
-        : `<input type="number" id="tiebreaker-input" class="tiebreaker-input" placeholder="e.g. 145" min="0" max="500" value="${tbValue || ''}" onchange="currentTiebreaker = this.value ? parseInt(this.value) : null">`
-      }
-    </div>
-    <div class="region-tabs">
-      ${REGIONS.map(r => `
-        <button class="${currentRegion === r ? 'active' : ''}" onclick="switchRegion('${r}')">${r}</button>
-      `).join("")}
-      <button class="${currentRegion === 'Final Four' ? 'active' : ''}" onclick="switchRegion('Final Four')">Final Four</button>
-    </div>
-    <div id="bracket-container">
-      ${currentRegion === 'Final Four' ? renderFinalFour(picks, locked, locked ? pickStatus : null) : renderRegion(currentRegion, picks, locked, locked ? pickStatus : null)}
+      <div class="region-tabs">
+        ${REGIONS.map(r => `
+          <button class="${currentRegion === r ? 'active' : ''}" onclick="switchRegion('${r}')">${r}</button>
+        `).join("")}
+        <button class="${currentRegion === 'Final Four' ? 'active' : ''}" onclick="switchRegion('Final Four')">Final Four</button>
+      </div>
+      <div id="bracket-container">
+        ${currentRegion === 'Final Four' ? renderFinalFour(picks, locked, locked ? pickStatus : null) : renderRegion(currentRegion, picks, locked, locked ? pickStatus : null)}
+      </div>
     </div>
   `;
 }
