@@ -681,6 +681,19 @@ function renderLeaderboardPage() {
 
   return `
     <h2 class="section-title">Leaderboard</h2>
+
+    <div class="scoring-card">
+      <h3>ESPN Scoring</h3>
+      <div class="scoring-grid">
+        <div class="scoring-item"><span class="scoring-round">Round of 64</span><span class="scoring-pts">10 pts</span></div>
+        <div class="scoring-item"><span class="scoring-round">Round of 32</span><span class="scoring-pts">20 pts</span></div>
+        <div class="scoring-item"><span class="scoring-round">Sweet 16</span><span class="scoring-pts">40 pts</span></div>
+        <div class="scoring-item"><span class="scoring-round">Elite 8</span><span class="scoring-pts">80 pts</span></div>
+        <div class="scoring-item"><span class="scoring-round">Final Four</span><span class="scoring-pts">160 pts</span></div>
+        <div class="scoring-item"><span class="scoring-round">Championship</span><span class="scoring-pts">320 pts</span></div>
+      </div>
+    </div>
+
     <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
       <span style="font-size:13px; color:var(--text-muted);">${gamesCompleted} games completed</span>
       ${champCombined !== null ? `<span style="font-size:13px; color:var(--text-muted);">Championship total: ${champCombined}</span>` : ''}

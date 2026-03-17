@@ -1471,6 +1471,54 @@ img { display: block; max-width: 100%; }
 /* Hidden file input */
 .hidden-input { display: none; }
 
+/* === SCORING GRID === */
+.scoring-card {
+  background: var(--navy-50);
+  border: 1px solid var(--navy-200);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.scoring-card h3 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--navy-700);
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.scoring-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.scoring-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 8px 4px;
+  border: 1px solid var(--navy-100);
+}
+
+.scoring-round {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.scoring-pts {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--navy-900);
+  margin-top: 2px;
+}
+
 /* === LEADERBOARD === */
 .leaderboard-table-wrap {
   background: var(--surface);
