@@ -1689,13 +1689,11 @@ function renderSettleUpButtons(bet, viewAs) {
   if (hasPendingProposal && !iProposed && (isCreator || isTaker)) {
     const proposerName = bet.settle_proposed_by === bet.creator_id ? bet.creator_name : bet.taker_name;
     const claimedWinner = bet.settle_winner === 'creator' ? bet.creator_name : bet.taker_name;
-    html += `<div style="margin-top:6px;padding:8px;background:#fef3c7;border:1px solid #92400e;border-radius:6px;font-size:12px;">
-      <div style="color:#92400e;font-weight:600;margin-bottom:4px;">⚡ Settle-Up Pending</div>
-      <div style="color:#451a03;font-weight:500;">${proposerName} says <strong>${claimedWinner}</strong> won.</div>
-      <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
-        <button class="btn-close-bet" onclick="settleUp(${bet.id}, '${bet.settle_winner}')" style="background:#16a34a;color:#fff;font-size:11px;padding:4px 10px;">Agree</button>
-        <button class="btn-close-bet" onclick="settleUp(${bet.id}, '${bet.settle_winner === 'creator' ? 'taker' : 'creator'}')" style="background:#dc2626;color:#fff;font-size:11px;padding:4px 10px;">Disagree — I won</button>
-      </div>
+    html += `<div style="margin-top:6px;padding:6px 8px;background:#fef3c7;border:1px solid #92400e;border-radius:6px;font-size:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span style="color:#92400e;font-weight:600;">⚡ Pending</span>
+      <span style="color:#451a03;font-weight:500;">${proposerName} says <strong>${claimedWinner}</strong> won</span>
+      <button class="btn-close-bet" onclick="settleUp(${bet.id}, '${bet.settle_winner}')" style="background:#16a34a;color:#fff;font-size:11px;padding:3px 10px;margin-left:auto;">Agree</button>
+      <button class="btn-close-bet" onclick="settleUp(${bet.id}, '${bet.settle_winner === 'creator' ? 'taker' : 'creator'}')" style="background:#dc2626;color:#fff;font-size:11px;padding:3px 10px;">Disagree</button>
     </div>`;
   } else if (hasPendingProposal && iProposed) {
     const claimedWinner = bet.settle_winner === 'creator' ? bet.creator_name : bet.taker_name;
