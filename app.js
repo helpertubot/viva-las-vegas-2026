@@ -1039,10 +1039,16 @@ function renderPuterBetCard(bet, myActiveWithPuter) {
   const canTake = !isClosed && !isTaken && !myActiveWithPuter && currentUser && currentUser.id !== PUTER_USER_ID;
   const isAdmin = currentUser && currentUser.is_admin;
 
+  const isVerifiable = bet.bet_category === 'verifiable';
+  const canSettle = isTaken && !isClosed && (isAdmin || (isMyBet && isVerifiable));
+  const categoryLabel = bet.bet_category === 'subjective'
+    ? '<span style="font-size:10px;background:#92400e;color:#fbbf24;padding:2px 6px;border-radius:4px;margin-left:6px;">Prop</span>'
+    : '<span style="font-size:10px;background:#1e3a5f;color:#60a5fa;padding:2px 6px;border-radius:4px;margin-left:6px;">Sports</span>';
+
   return `
     <div class="bet-card puter-bet${isClosed ? ' bet-closed' : ''}${isMyBet && !isClosed ? ' puter-my-bet' : ''}">
       <div class="bet-header">
-        <span class="bet-about">🤖 Puter bets${bet.about_user_id ? ` (about ${allUsers.find(u => u.id === bet.about_user_id)?.display_name || 'someone'})` : ''}:</span>
+        <span class="bet-about">🤖 Puter bets${bet.about_user_id ? ` (about ${allUsers.find(u => u.id === bet.about_user_id)?.display_name || 'someone'})` : ''}:${categoryLabel}</span>
         <span class="bet-amount">$${bet.amount}</span>
       </div>
       <div class="bet-description">${escapeHtml(bet.description)}</div>
@@ -1057,9 +1063,12 @@ function renderPuterBetCard(bet, myActiveWithPuter) {
                 ? `<span class="bet-status-open">Open (you have an active bet with Puter)</span>`
                 : `<span class="bet-status-open">Open</span>`
         }
-        ${isAdmin && isTaken && !isClosed ? `
+        ${canSettle ? `
           <button class="btn-close-bet" onclick="settlePuterBet(${bet.id}, 'puter')" style="background:#16a34a;color:#fff;">Puter Wins</button>
           <button class="btn-close-bet" onclick="settlePuterBet(${bet.id}, 'taker')" style="background:#dc2626;color:#fff;">${bet.taker_name} Wins</button>
+        ` : ''}
+        ${!canSettle && isMyBet && isTaken && !isClosed && !isVerifiable ? `
+          <span style="font-size:11px;color:#94a3b8;font-style:italic;">Admin settles prop bets</span>
         ` : ''}
         ${isAdmin && !isTaken && !isClosed ? `
           <button class="btn-delete-bet" onclick="deletePuterBet(${bet.id})">Remove</button>
@@ -1079,6 +1088,10 @@ function renderPuterAdminControls() {
         <select id="puter-bet-about" style="padding:8px; border:1px solid #475569; border-radius:6px; font-size:13px; background:#0f172a; color:#e2e8f0;">
           <option value="">No specific person</option>
           ${allUsers.filter(u => u.id !== PUTER_USER_ID).map(u => `<option value="${u.id}">${u.display_name}</option>`).join('')}
+        </select>
+        <select id="puter-bet-category" style="padding:8px; border:1px solid #475569; border-radius:6px; font-size:13px; background:#0f172a; color:#e2e8f0;">
+          <option value="verifiable">Sports (taker settles)</option>
+          <option value="subjective">Prop (admin settles)</option>
         </select>
         <button class="btn-primary" onclick="createPuterBet()" style="padding:8px 16px; font-size:13px;">Post Bet</button>
       </div>
@@ -1128,13 +1141,15 @@ async function createPuterBet() {
   const desc = document.getElementById('puter-bet-desc')?.value.trim();
   const amount = parseFloat(document.getElementById('puter-bet-amount')?.value);
   const aboutId = document.getElementById('puter-bet-about')?.value;
+  const category = document.getElementById('puter-bet-category')?.value || 'verifiable';
   if (!desc) { alert('Enter a bet description'); return; }
   if (!amount || amount <= 0) { alert('Enter a valid amount'); return; }
   try {
     await apiPost(`/api/puter/bets?viewer_id=${currentUser.id}`, {
       description: desc,
       amount: amount,
-      about_user_id: aboutId ? parseInt(aboutId) : null
+      about_user_id: aboutId ? parseInt(aboutId) : null,
+      bet_category: category
     });
     await loadBets();
     render();
@@ -2037,6 +2052,7 @@ function toggleCreateBet() {
 }
 
 async function createBet() {
+  const btn = document.querySelector('#create-bet-form .btn-primary, #create-bet-form button[onclick="createBet()"]');
   const amount = parseFloat(document.getElementById("bet-amount").value);
   const desc = document.getElementById("bet-description").value.trim();
   const aboutId = parseInt(document.getElementById("bet-about").value);
@@ -2050,6 +2066,8 @@ async function createBet() {
     return;
   }
 
+  // Disable button to prevent rapid double-submissions
+  if (btn) { btn.disabled = true; btn.textContent = 'Placing...'; }
   try {
     await apiPost(`/api/bets?viewer_id=${currentUser.id}`, {
       about_user_id: aboutId,
@@ -2061,6 +2079,7 @@ async function createBet() {
     render();
   } catch (err) {
     showToast(err.message, "error");
+    if (btn) { btn.disabled = false; btn.textContent = 'Place Bet'; }
   }
 }
 

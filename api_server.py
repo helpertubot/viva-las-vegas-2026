@@ -119,7 +119,8 @@ def init_db(conn):
             taken_at DOUBLE PRECISION,
             closed BOOLEAN NOT NULL DEFAULT FALSE,
             closed_at DOUBLE PRECISION,
-            created_at DOUBLE PRECISION NOT NULL
+            created_at DOUBLE PRECISION NOT NULL,
+            bet_category TEXT DEFAULT NULL
         );
     """)
     cur.execute("""
@@ -745,15 +746,19 @@ def create_bet(req: CreateBetRequest, viewer_id: int = 0):
         raise HTTPException(status_code=400, detail="Cannot bet about yourself")
 
     cur = get_cursor()
-    cur.execute("SELECT COUNT(*) as c FROM bets WHERE creator_id = %s AND closed = FALSE", (viewer_id,))
+    # Advisory lock to prevent race condition on rapid submissions
+    cur.execute("SELECT pg_advisory_xact_lock(%s)", (viewer_id,))
+    cur.execute("SELECT COUNT(*) as c FROM bets WHERE creator_id = %s AND closed = FALSE AND bet_type = 'friend'", (viewer_id,))
     count = cur.fetchone()[0]
     if count >= 3:
+        db.commit()  # release advisory lock
         cur.close()
         raise HTTPException(status_code=400, detail="You can only have 3 active bets")
 
     cur.execute("SELECT COUNT(*) as c FROM bets WHERE about_user_id = %s AND closed = FALSE", (req.about_user_id,))
     on_count = cur.fetchone()[0]
     if on_count >= 3:
+        db.commit()  # release advisory lock
         cur.close()
         raise HTTPException(status_code=400, detail="Max 3 active bets can be placed about this person")
 
@@ -914,17 +919,11 @@ class SettlePuterBetRequest(BaseModel):
 
 @app.post("/api/puter/bets/{bet_id}/settle")
 def settle_puter_bet(bet_id: int, req: SettlePuterBetRequest, viewer_id: int = 0):
-    """Admin settles a Puter bet. Updates ledger accordingly."""
+    """Settle a Puter bet. Verifiable bets can be settled by the taker; subjective bets require admin."""
     if viewer_id == 0:
         raise HTTPException(status_code=400, detail="Must be logged in")
     cur = get_cursor()
-    # Only admin can settle Puter bets
-    cur.execute("SELECT is_admin FROM users WHERE id = %s", (viewer_id,))
-    viewer_row = fetchone_dict(cur)
-    if not (viewer_row and viewer_row.get("is_admin")):
-        cur.close()
-        raise HTTPException(status_code=403, detail="Only admin can settle Puter bets")
-    # Get the bet
+    # Get the bet first to check category
     cur.execute("SELECT * FROM bets WHERE id = %s AND creator_id = %s", (bet_id, PUTER_USER_ID))
     bet = fetchone_dict(cur)
     if not bet:
@@ -936,6 +935,16 @@ def settle_puter_bet(bet_id: int, req: SettlePuterBetRequest, viewer_id: int = 0
     if not bet["taker_id"]:
         cur.close()
         raise HTTPException(status_code=400, detail="Bet hasn't been taken yet")
+    # Check permissions: verifiable bets can be settled by taker OR admin; subjective = admin only
+    cur.execute("SELECT is_admin FROM users WHERE id = %s", (viewer_id,))
+    viewer_row = fetchone_dict(cur)
+    is_admin = viewer_row and viewer_row.get("is_admin")
+    is_taker = viewer_id == bet["taker_id"]
+    is_verifiable = bet.get("bet_category") == 'verifiable'
+    if not is_admin:
+        if not (is_verifiable and is_taker):
+            cur.close()
+            raise HTTPException(status_code=403, detail="Only admin can settle this type of Puter bet")
     # Get current balance
     cur.execute("SELECT balance_after FROM puter_ledger ORDER BY id DESC LIMIT 1")
     row = cur.fetchone()
@@ -964,6 +973,7 @@ class CreatePuterBetRequest(BaseModel):
     description: str
     amount: float
     about_user_id: Optional[int] = None
+    bet_category: Optional[str] = 'verifiable'  # 'verifiable' or 'subjective'
 
 @app.post("/api/puter/bets")
 def create_puter_bet(req: CreatePuterBetRequest, viewer_id: int = 0):
@@ -993,15 +1003,17 @@ def create_puter_bet(req: CreatePuterBetRequest, viewer_id: int = 0):
     if req.amount > balance:
         cur.close()
         raise HTTPException(status_code=400, detail=f"Not enough bankroll. Balance: ${balance}")
+    # Validate bet_category
+    category = req.bet_category if req.bet_category in ('verifiable', 'subjective') else 'verifiable'
     now = time.time()
     cur.execute(
-        "INSERT INTO bets (creator_id, about_user_id, bet_type, description, amount, created_at) VALUES (%s, %s, 'puter', %s, %s, %s) RETURNING id",
-        (PUTER_USER_ID, req.about_user_id, req.description, req.amount, now)
+        "INSERT INTO bets (creator_id, about_user_id, bet_type, description, amount, created_at, bet_category) VALUES (%s, %s, 'puter', %s, %s, %s, %s) RETURNING id",
+        (PUTER_USER_ID, req.about_user_id, req.description, req.amount, now, category)
     )
     bet_id = cur.fetchone()[0]
     db.commit()
     cur.close()
-    return {"id": bet_id}
+    return {"id": bet_id, "bet_category": category}
 
 @app.get("/api/config")
 def get_config():
