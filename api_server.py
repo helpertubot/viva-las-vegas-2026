@@ -935,14 +935,15 @@ def settle_puter_bet(bet_id: int, req: SettlePuterBetRequest, viewer_id: int = 0
     if not bet["taker_id"]:
         cur.close()
         raise HTTPException(status_code=400, detail="Bet hasn't been taken yet")
-    # Check permissions: verifiable bets can be settled by taker OR admin; subjective = admin only
+    # Check permissions: verifiable bets can be settled by taker, Puter itself, or admin; subjective = admin only
     cur.execute("SELECT is_admin FROM users WHERE id = %s", (viewer_id,))
     viewer_row = fetchone_dict(cur)
     is_admin = viewer_row and viewer_row.get("is_admin")
     is_taker = viewer_id == bet["taker_id"]
+    is_puter = viewer_id == PUTER_USER_ID
     is_verifiable = bet.get("bet_category") == 'verifiable'
     if not is_admin:
-        if not (is_verifiable and is_taker):
+        if not (is_verifiable and (is_taker or is_puter)):
             cur.close()
             raise HTTPException(status_code=403, detail="Only admin can settle this type of Puter bet")
     # Get current balance
