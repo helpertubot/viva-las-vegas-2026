@@ -212,6 +212,7 @@ function renderHeader() {
       <nav class="header-nav">
         <button onclick="navigate('home')" class="${currentView === 'home' ? 'active' : ''}">Home</button>
         <button onclick="navigate('bracket')" class="${currentView === 'bracket' ? 'active' : ''}">My Brackets</button>
+        <button onclick="navigate('games')" class="${currentView === 'games' ? 'active' : ''}">Games</button>
         <button onclick="navigate('bets')" class="${currentView === 'bets' ? 'active' : ''}">Bets</button>
         <button onclick="navigate('leaderboard')" class="${currentView === 'leaderboard' ? 'active' : ''}">Leaderboard</button>
         <button onclick="navigate('trip')" class="${currentView === 'trip' ? 'active' : ''}">Trip</button>
@@ -237,6 +238,10 @@ function renderMobileNav() {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
         Bracket
       </button>
+      <button onclick="navigate('games')" class="${currentView === 'games' ? 'active' : ''}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        Games
+      </button>
       <button onclick="navigate('bets')" class="${currentView === 'bets' ? 'active' : ''}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
         Bets
@@ -261,6 +266,7 @@ function renderMobileNav() {
 function renderCurrentView() {
   switch (currentView) {
     case "home": return renderHome();
+    case "games": return renderGamesPage();
     case "bracket": return renderMyBracketsPage();
     case "view-bracket": return renderBracketPage(viewingBracketId, true);
     case "bets": return renderBetsPage();
@@ -312,7 +318,6 @@ function renderHome() {
         <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQgAAAEICAIAAAAslP2oAAAE/0lEQVR4nO3dQW4lNRRAUYLYEBtgQSyoF8QGWNJnjHQ9sOQnVyXnDFH6p9LkylK9tv31+Xx+A/7v99sPAE8kDAjCgCAMCMKAIAwIwoAgDAjCgCAMCMKAIAwIwoAgDAjCgPDH7h/469e/E89x3D9//5n/fff5V58z7dTf8/Tzv/33YcWKAUEYEIQBQRgQhAFBGBCEAWF7jrHylvf9p+Ybu6af89bXr7zl92HFigFBGBCEAUEYEIQBQRgQhAHh2Bxj5Wn7CnafZ/q9/urzp5/z1j6Kp/0+rFgxIAgDgjAgCAOCMCAIA4IwIIzPMZ5m9/33qTnD9H6G3ee8tV/iLawYEIQBQRgQhAFBGBCEAUEYEH7cHOOUp+2veNq+i7ezYkAQBgRhQBAGBGFAEAYEYUAYn2M87d/939qfcGp/xds97fdhxYoBQRgQhAFBGBCEAUEYEIQB4dgc47u+d5926x7uU8+z+zlvYcWAIAwIwoAgDAjCgCAMCMKA8PX5fG4/wyOcuu/i1n3bb9nn8BZWDAjCgCAMCMKAIAwIwoAgDAjb+zHesn9g5dR926fuu3jL9901va9j+vfNigFBGBCEAUEYEIQBQRgQhAFhe45x6z7p6XnI0/ZXrEy/v3/7z3uKFQOCMCAIA4IwIAgDgjAgCAPCtXu+b+1P2P38U6bnCbtOff6tezOmfx+sGBCEAUEYEIQBQRgQhAFBGBC278d42v3NT5uT/LT9EtNu3fthxYAgDAjCgCAMCMKAIAwIwoBwbD/GrTnArfsfpt+v37oX4tY5Uae4HwMGCQOCMCAIA4IwIAgDgjAgHJtj3Lpve2V37jG9L+K7nlt1a7+H+zHgAmFAEAYEYUAQBgRhQBAGhPH9GNNO7VuYPq/pu77v/673f1sxIAgDgjAgCAOCMCAIA4IwIGzfj3HL9DlLT3vv/vav33VrDrZixYAgDAjCgCAMCMKAIAwIwoBw7VypW9/31HlKu279/Uzfp7HL/RjwYsKAIAwIwoAgDAjCgCAMCNfOlXrLPoFb94jfur/i1nxj5db8x4oBQRgQhAFBGBCEAUEYEIQBYXuOMX2O0PR8Y+Ut95Tvfv2tudD056y4HwMGCQOCMCAIA4IwIAgDgjAgXLsf49Y+h5Wn3Qtxaz4z7Wn3YKxYMSAIA4IwIAgDgjAgCAOCMCBc249xyq15yFvmCU97zul9Haf+/1oxIAgDgjAgCAOCMCAIA4IwIFzbj3HLrfOUdk3v99j9vm/5udzzDYOEAUEYEIQBQRgQhAFBGBBevx9j5da947uf/3an5gZPO2/KigFBGBCEAUEYEIQBQRgQhAFhe46xcus99PQ5RU+7P3vl1vlLT5s/nGLFgCAMCMKAIAwIwoAgDAjCgHBsjrFy63ykU26dpzR9ztXT9pPcmv+sWDEgCAOCMCAIA4IwIAgDgjAgjM8x3mJ6f8L03GD6fKdTnz/9c52ab1gxIAgDgjAgCAOCMCAIA4IwIPy4OcbTzn1aect95KdMz0N2WTEgCAOCMCAIA4IwIAgDgjAgfH0+n60/MH3fwq5bzzP9Hn36PKun3dex+znTrBgQhAFBGBCEAUEYEIQBQRgQju3HmH6vf8r0+Uu7ps9Zest93rfmNitWDAjCgCAMCMKAIAwIwoAgDAjb+zHgJ7BiQBAGBGFAEAYEYUAQBgRhQBAGBGFAEAYEYUAQBgRhQBAGBGFA+A9nWCQ+2BjRmgAAAABJRU5ErkJggg==" alt="Venmo QR Code" class="venmo-qr-img" />
       </a>
     </div>
-    ${renderLiveScores()}
     <h2 class="section-title">Members</h2>
     <div class="members-grid">
       ${allUsers.map(u => {
@@ -337,6 +342,13 @@ function renderHome() {
         `;
       }).join("")}
     </div>
+  `;
+}
+
+// ===== GAMES PAGE =====
+function renderGamesPage() {
+  return `
+    ${renderLiveScores() || '<div class="empty-state">No games scheduled yet. Games will appear here once the tournament begins.</div>'}
   `;
 }
 
@@ -1560,7 +1572,7 @@ function navigate(view) {
   currentView = view;
   render();
   window.scrollTo(0, 0);
-  if (view === 'home') {
+  if (view === 'home' || view === 'games') {
     loadLiveSchedule().then(() => render());
   }
   if (view === 'leaderboard') {
