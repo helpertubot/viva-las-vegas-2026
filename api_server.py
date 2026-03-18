@@ -659,6 +659,10 @@ def submit_bracket(bracket_id: int, req: SubmitBracketRequest):
     if bracket["submitted"]:
         cur.close()
         raise HTTPException(status_code=400, detail="Bracket already submitted")
+    # Check bracket lock deadline
+    if time.time() >= BRACKET_LOCK_TIMESTAMP:
+        cur.close()
+        raise HTTPException(status_code=400, detail="Brackets are locked — the tournament has started")
     # Validate completeness: 63 picks + tiebreaker required
     pick_count = len(req.picks) if req.picks else 0
     if pick_count < 63:
@@ -1520,6 +1524,7 @@ def get_config():
     settings = {r['key']: r['value'] for r in rows}
     return {
         "bet_reveal_timestamp": BET_REVEAL_TIMESTAMP,
+        "bracket_lock_timestamp": BRACKET_LOCK_TIMESTAMP,
         "entry_fee": 50,
         "max_bets_per_user": 3,
         "banner_position": int(settings.get("banner_position", "30")),
@@ -1607,6 +1612,9 @@ def get_group_schedule():
 
 # ---- Tournament / ESPN ----
 ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard"
+# Bracket submission deadline: Thu Mar 19 11:00 AM ET (8:00 AM PDT) — before first tip-off
+BRACKET_LOCK_TIMESTAMP = 1773932400  # 2026-03-19 15:00 UTC = 11:00 AM ET = 8:00 AM PDT
+
 TOURNAMENT_DATES = [
     "20260319", "20260320",  # R1
     "20260321", "20260322",  # R2

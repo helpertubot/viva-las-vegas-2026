@@ -558,7 +558,9 @@ function renderBracketEditor(bracket, myBrackets) {
         <div class="bracket-editor-actions">
           ${locked
             ? `${currentUser.is_admin ? `<button class="btn-unlock-bracket" onclick="adminResetBracket(${bracket.id}, '${escapeHtml((allUsers.find(u => u.id === bracket.user_id) || {}).display_name || 'Unknown')}', '${escapeHtml(bracket.label)}')" title="Unlock bracket for editing"><svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2h-1V7a4 4 0 00-8 0v.5a.5.5 0 001 0V7a3 3 0 016 0v2H5z"/></svg> Unlock</button>` : ''}${canCreateMore ? `<button class="btn-create-bracket" onclick="createNewBracket()"><svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"/></svg> New Bracket</button>` : ''}`
-            : `<button class="btn-save-draft" onclick="saveDraft()">Save Draft</button>
+            : (config.bracket_lock_timestamp && Date.now() / 1000 >= config.bracket_lock_timestamp)
+              ? `<span class="locked-badge" style="font-size:13px;">\uD83D\uDD12 Brackets Locked</span>`
+              : `<button class="btn-save-draft" onclick="saveDraft()">Save Draft</button>
                <button class="btn-submit-bracket" onclick="confirmSubmit()">Submit ($${config.entry_fee})</button>`
           }
         </div>
@@ -2597,6 +2599,13 @@ function confirmSubmit() {
   const tbInput = document.getElementById("tiebreaker-input");
   const tbVal = tbInput ? tbInput.value : null;
   const REQUIRED_PICKS = 63;
+
+  // Check bracket lock deadline
+  const lockTs = config.bracket_lock_timestamp || 0;
+  if (lockTs && Date.now() / 1000 >= lockTs) {
+    showToast('Brackets are locked — the tournament has started', 'error');
+    return;
+  }
 
   // Validate all picks + tiebreaker filled
   if (pickCount < REQUIRED_PICKS || !tbVal) {
