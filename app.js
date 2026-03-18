@@ -84,6 +84,7 @@ let leaderboardData = { leaderboard: [], championship_combined: null, games_comp
 let tournamentResults = { results: [] };
 let liveSchedule = { games: [] };
 let allStays = [];
+let puterTaunts = [];
 
 // ===== API HELPERS =====
 async function apiGet(path) {
@@ -326,6 +327,63 @@ function renderCurrentView() {
 }
 
 // ===== HOME =====
+function renderPuterSaysCard() {
+  if (!puterTaunts || puterTaunts.length === 0) return '';
+
+  // Pick 2-3 taunts based on a 2-hour rotation window
+  const windowIdx = Math.floor(Date.now() / (2 * 60 * 60 * 1000));
+  const count = Math.min(3, puterTaunts.length);
+  const selected = [];
+  for (let i = 0; i < count; i++) {
+    selected.push(puterTaunts[(windowIdx + i) % puterTaunts.length]);
+  }
+
+  return `
+    <div class="puter-says-card">
+      <div class="puter-says-header">
+        <span class="puter-says-icon">\u{1F916}</span>
+        <span class="puter-says-title">Puter Says</span>
+      </div>
+      ${selected.map(t => {
+        const targetTag = t.target_name ? `<span class="puter-taunt-target">@${escapeHtml(t.target_name)}</span>` : '';
+        const responseCount = (t.responses || []).length;
+        const responsesHtml = responseCount > 0 ? `
+          <div class="puter-responses-toggle" onclick="event.stopPropagation(); const el=document.getElementById('taunt-responses-${t.id}'); el.style.display = el.style.display === 'none' ? 'block' : 'none';">
+            \u{1F4AC} ${responseCount} repl${responseCount !== 1 ? 'ies' : 'y'}
+          </div>
+          <div id="taunt-responses-${t.id}" class="puter-responses" style="display:none;">
+            ${t.responses.map(r => `
+              <div class="puter-response">
+                <div class="puter-response-avatar">${r.avatar_data ? `<img src="${r.avatar_data}">` : (r.user_name||'').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}</div>
+                <div class="puter-response-body">
+                  <span class="puter-response-name">${escapeHtml(r.user_name)}</span>
+                  <span class="puter-response-text">${escapeHtml(r.response)}</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        ` : '';
+
+        return `
+          <div class="puter-taunt">
+            <div class="puter-taunt-text">${escapeHtml(t.taunt)} ${targetTag}</div>
+            <div class="puter-taunt-actions">
+              ${responsesHtml}
+              ${currentUser ? `
+                <button class="puter-clap-back-btn" onclick="event.stopPropagation(); const w=document.getElementById('taunt-input-${t.id}'); w.style.display = w.style.display === 'none' ? 'flex' : 'none';">Clap back \u{1F4AC}</button>
+                <div id="taunt-input-${t.id}" class="puter-response-input" style="display:none;">
+                  <input id="taunt-response-${t.id}" type="text" maxlength="280" placeholder="Talk back to Puter..." />
+                  <button onclick="respondToTaunt(${t.id})">Send</button>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
 function renderHome() {
   const submittedBrackets = allBrackets.filter(b => b.submitted).length;
   const totalBrackets = allBrackets.length;
@@ -374,6 +432,8 @@ function renderHome() {
         <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQgAAAEICAIAAAAslP2oAAAE/0lEQVR4nO3dQW4lNRRAUYLYEBtgQSyoF8QGWNJnjHQ9sOQnVyXnDFH6p9LkylK9tv31+Xx+A/7v99sPAE8kDAjCgCAMCMKAIAwIwoAgDAjCgCAMCMKAIAwIwoAgDAjCgPDH7h/469e/E89x3D9//5n/fff5V58z7dTf8/Tzv/33YcWKAUEYEIQBQRgQhAFBGBCEAWF7jrHylvf9p+Ybu6af89bXr7zl92HFigFBGBCEAUEYEIQBQRgQhAHh2Bxj5Wn7CnafZ/q9/urzp5/z1j6Kp/0+rFgxIAgDgjAgCAOCMCAIA4IwIIzPMZ5m9/33qTnD9H6G3ee8tV/iLawYEIQBQRgQhAFBGBCEAUEYEH7cHOOUp+2veNq+i7ezYkAQBgRhQBAGBGFAEAYEYUAYn2M87d/939qfcGp/xds97fdhxYoBQRgQhAFBGBCEAUEYEIQB4dgc47u+d5926x7uU8+z+zlvYcWAIAwIwoAgDAjCgCAMCMKA8PX5fG4/wyOcuu/i1n3bb9nn8BZWDAjCgCAMCMKAIAwIwoAgDAjb+zHesn9g5dR926fuu3jL9901va9j+vfNigFBGBCEAUEYEIQBQRgQhAFhe45x6z7p6XnI0/ZXrEy/v3/7z3uKFQOCMCAIA4IwIAgDgjAgCAPCtXu+b+1P2P38U6bnCbtOff6tezOmfx+sGBCEAUEYEIQBQRgQhAFBGBC278d42v3NT5uT/LT9EtNu3fthxYAgDAjCgCAMCMKAIAwIwoBwbD/GrTnArfsfpt+v37oX4tY5Uae4HwMGCQOCMCAIA4IwIAgDgjAgHJtj3Lpve2V37jG9L+K7nlt1a7+H+zHgAmFAEAYEYUAQBgRhQBAGhPH9GNNO7VuYPq/pu77v/673f1sxIAgDgjAgCAOCMCAIA4IwIGzfj3HL9DlLT3vv/vav33VrDrZixYAgDAjCgCAMCMKAIAwIwoBw7VypW9/31HlKu279/Uzfp7HL/RjwYsKAIAwIwoAgDAjCgCAMCNfOlXrLPoFb94jfur/i1nxj5db8x4oBQRgQhAFBGBCEAUEYEIQBYXuOMX2O0PR8Y+Ut95Tvfv2tudD056y4HwMGCQOCMCAIA4IwIAgDgjAgXLsf49Y+h5Wn3Qtxaz4z7Wn3YKxYMSAIA4IwIAgDgjAgCAOCMCBc249xyq15yFvmCU97zul9Haf+/1oxIAgDgjAgCAOCMCAIA4IwIFzbj3HLrfOUdk3v99j9vm/5udzzDYOEAUEYEIQBQRgQhAFBGBBevx9j5da947uf/3an5gZPO2/KigFBGBCEAUEYEIQBQRgQhAFhe46xcus99PQ5RU+7P3vl1vlLT5s/nGLFgCAMCMKAIAwIwoAgDAjCgHBsjrFy63ykU26dpzR9ztXT9pPcmv+sWDEgCAOCMCAIA4IwIAgDgjAgjM8x3mJ6f8L03GD6fKdTnz/9c52ab1gxIAgDgjAgCAOCMCAIA4IwIPy4OcbTzn1aect95KdMz0N2WTEgCAOCMCAIA4IwIAgDgjAgfH0+n60/MH3fwq5bzzP9Hn36PKun3dex+znTrBgQhAFBGBCEAUEYEIQBQRgQju3HmH6vf8r0+Uu7ps9Zest93rfmNitWDAjCgCAMCMKAIAwIwoAgDAjb+zHgJ7BiQBAGBGFAEAYEYUAQBgRhQBAGBGFAEAYEYUAQBgRhQBAGBGFA+A9nWCQ+2BjRmgAAAABJRU5ErkJggg==" alt="Venmo QR Code" class="venmo-qr-img" />
       </a>
     </div>
+    ${renderPuterSaysCard()}
+
     <h2 class="section-title">Members</h2>
     <div class="members-grid">
       ${allUsers.map(u => {
@@ -1451,6 +1511,25 @@ function formatTimeLeft(expiresAt) {
   return '<1m left';
 }
 
+function renderBetTaunt(bet) {
+  if (!puterTaunts || puterTaunts.length === 0) return '';
+  // Look for a taunt targeted at the current user, or a general taunt as fallback
+  const userId = currentUser ? currentUser.id : null;
+  let taunt = puterTaunts.find(t => t.target_user_id === userId);
+  if (!taunt) {
+    // Pick a general taunt based on bet id for deterministic selection
+    const general = puterTaunts.filter(t => !t.target_user_id);
+    if (general.length > 0) taunt = general[bet.id % general.length];
+  }
+  if (!taunt) return '';
+  return `
+    <div class="puter-speech-bubble">
+      <span class="puter-speech-icon">\u{1F916}</span>
+      <span class="puter-speech-text">${escapeHtml(taunt.taunt)}</span>
+    </div>
+  `;
+}
+
 function renderPuterBetCard(bet, myActiveWithPuter) {
   const isClosed = bet.closed;
   const isTaken = !!bet.taker_id;
@@ -1488,6 +1567,7 @@ function renderPuterBetCard(bet, myActiveWithPuter) {
         </div>
       </div>
       <div class="bet-description">${escapeHtml(bet.description)}</div>
+      ${renderBetTaunt(bet)}
       <div class="bet-footer">
         ${isClosed
           ? wasExpired
@@ -2522,6 +2602,7 @@ function navigate(view) {
   window.scrollTo(0, 0);
   if (view === 'home' || view === 'games') {
     loadLiveSchedule().then(() => render());
+    if (view === 'home') loadPuterTaunts().then(() => render());
   }
   if (view === 'leaderboard') {
     Promise.all([loadTournamentData(), loadCombinedStandings()]).then(() => render());
@@ -2534,6 +2615,7 @@ function navigate(view) {
   }
   if (view === 'bets') {
     loadBets().then(() => render());
+    loadPuterTaunts().then(() => render());
   }
 }
 
@@ -2992,8 +3074,9 @@ async function loadAllData() {
   allBrackets = brackets;
   betData = betsRes;
   config = cfg;
-  // Load tournament data in background (non-blocking)
+  // Load tournament data and taunts in background (non-blocking)
   loadTournamentData();
+  loadPuterTaunts();
 }
 
 async function loadTournamentData() {
@@ -3049,6 +3132,31 @@ async function loadStays() {
     allStays = await apiGet("/api/stays");
   } catch (e) {
     allStays = [];
+  }
+}
+
+async function loadPuterTaunts() {
+  try {
+    const data = await apiGet(`/api/puter-taunts${currentUser ? `?user_id=${currentUser.id}` : ''}`);
+    puterTaunts = data.taunts || [];
+  } catch (e) {
+    puterTaunts = [];
+  }
+}
+
+async function respondToTaunt(tauntId) {
+  const input = document.getElementById(`taunt-response-${tauntId}`);
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  if (text.length > 280) { showToast('Max 280 characters', 'error'); return; }
+  try {
+    await apiPost(`/api/puter-taunts/${tauntId}/respond`, { user_id: currentUser.id, response: text });
+    showToast('Puter heard you \u{1F440}');
+    await loadPuterTaunts();
+    render();
+  } catch (e) {
+    showToast(e.message, 'error');
   }
 }
 

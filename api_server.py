@@ -1993,6 +1993,89 @@ def get_leaderboard():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ---- Puter Trash Talk ----
+class TauntResponseRequest(BaseModel):
+    user_id: int
+    response: str
+
+@app.get("/api/puter-taunts")
+def get_puter_taunts(user_id: int = None, bet_id: int = None):
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        if bet_id:
+            cur.execute("SELECT id, taunt, target_user_id, taunt_type, created_at FROM puter_taunts WHERE bet_id = %s AND active = true ORDER BY created_at DESC", (bet_id,))
+        elif user_id:
+            cur.execute("SELECT id, taunt, target_user_id, taunt_type, created_at FROM puter_taunts WHERE (target_user_id = %s OR target_user_id IS NULL) AND active = true ORDER BY created_at DESC", (user_id,))
+        else:
+            cur.execute("SELECT id, taunt, target_user_id, taunt_type, created_at FROM puter_taunts WHERE active = true ORDER BY created_at DESC")
+
+        taunts = []
+        for row in cur.fetchall():
+            tid = row[0]
+            cur.execute("""
+                SELECT r.id, r.response, r.created_at, u.display_name, u.avatar_data
+                FROM puter_taunt_responses r JOIN users u ON r.user_id = u.id
+                WHERE r.taunt_id = %s ORDER BY r.created_at DESC LIMIT 5
+            """, (tid,))
+            responses = [{"id": r[0], "response": r[1], "created_at": str(r[2]), "user_name": r[3], "avatar_data": r[4]} for r in cur.fetchall()]
+
+            target_name = None
+            if row[2]:
+                cur.execute("SELECT display_name FROM users WHERE id = %s", (row[2],))
+                tn = cur.fetchone()
+                target_name = tn[0] if tn else None
+
+            taunts.append({
+                "id": tid,
+                "taunt": row[1],
+                "target_user_id": row[2],
+                "target_name": target_name,
+                "taunt_type": row[3],
+                "created_at": str(row[4]),
+                "responses": responses
+            })
+
+        return {"taunts": taunts}
+    finally:
+        conn.close()
+
+@app.post("/api/puter-taunts/{taunt_id}/respond")
+def respond_to_taunt(taunt_id: int, req: TauntResponseRequest):
+    if len(req.response) > 280:
+        raise HTTPException(status_code=400, detail="Response must be 280 characters or less")
+    if not req.response.strip():
+        raise HTTPException(status_code=400, detail="Response cannot be empty")
+
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT id FROM puter_taunts WHERE id = %s AND active = true", (taunt_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Taunt not found or inactive")
+
+        cur.execute("SELECT display_name FROM users WHERE id = %s", (req.user_id,))
+        user_row = cur.fetchone()
+        if not user_row:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        cur.execute(
+            "INSERT INTO puter_taunt_responses (taunt_id, user_id, response) VALUES (%s, %s, %s) RETURNING id, created_at",
+            (taunt_id, req.user_id, req.response.strip())
+        )
+        result = cur.fetchone()
+        conn.commit()
+
+        return {"ok": True, "response": {"id": result[0], "response": req.response.strip(), "created_at": str(result[1]), "user_name": user_row[0]}}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
 # ---- Serve static files ----
 STATIC_DIR = os.path.dirname(os.path.abspath(__file__))
 
