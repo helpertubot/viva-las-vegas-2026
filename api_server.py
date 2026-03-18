@@ -659,6 +659,14 @@ def submit_bracket(bracket_id: int, req: SubmitBracketRequest):
     if bracket["submitted"]:
         cur.close()
         raise HTTPException(status_code=400, detail="Bracket already submitted")
+    # Validate completeness: 63 picks + tiebreaker required
+    pick_count = len(req.picks) if req.picks else 0
+    if pick_count < 63:
+        cur.close()
+        raise HTTPException(status_code=400, detail=f"All 63 picks required to submit (you have {pick_count})")
+    if req.tiebreaker_score is None:
+        cur.close()
+        raise HTTPException(status_code=400, detail="Tiebreaker score is required to submit")
     now = time.time()
     cur.execute("UPDATE brackets SET picks = %s, tiebreaker_score = %s, submitted = 1, submitted_at = %s, updated_at = %s WHERE id = %s",
                (json.dumps(req.picks), req.tiebreaker_score, now, now, bracket_id))

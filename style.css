@@ -1053,6 +1053,17 @@ img { display: block; max-width: 100%; }
 }
 .btn-save-draft:hover { background: var(--gray-200); }
 
+.btn-unlock-bracket {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 8px 14px;
+  background: var(--orange-500); color: #fff;
+  border-radius: var(--radius-md);
+  font-size: 13px; font-weight: 600;
+  cursor: pointer; border: none;
+  transition: all var(--transition);
+}
+.btn-unlock-bracket:hover { background: var(--orange-600); }
+
 /* Bracket region tabs */
 .region-tabs {
   display: flex;

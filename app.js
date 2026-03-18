@@ -557,7 +557,7 @@ function renderBracketEditor(bracket, myBrackets) {
         </div>
         <div class="bracket-editor-actions">
           ${locked
-            ? `${canCreateMore ? `<button class="btn-create-bracket" onclick="createNewBracket()"><svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"/></svg> New Bracket</button>` : ''}`
+            ? `${currentUser.is_admin ? `<button class="btn-unlock-bracket" onclick="adminResetBracket(${bracket.id}, '${escapeHtml((allUsers.find(u => u.id === bracket.user_id) || {}).display_name || 'Unknown')}', '${escapeHtml(bracket.label)}')" title="Unlock bracket for editing"><svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2h-1V7a4 4 0 00-8 0v.5a.5.5 0 001 0V7a3 3 0 016 0v2H5z"/></svg> Unlock</button>` : ''}${canCreateMore ? `<button class="btn-create-bracket" onclick="createNewBracket()"><svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"/></svg> New Bracket</button>` : ''}`
             : `<button class="btn-save-draft" onclick="saveDraft()">Save Draft</button>
                <button class="btn-submit-bracket" onclick="confirmSubmit()">Submit ($${config.entry_fee})</button>`
           }
@@ -2594,6 +2594,19 @@ async function saveDraft() {
 
 function confirmSubmit() {
   const pickCount = Object.keys(currentPicks).length;
+  const tbInput = document.getElementById("tiebreaker-input");
+  const tbVal = tbInput ? tbInput.value : null;
+  const REQUIRED_PICKS = 63;
+
+  // Validate all picks + tiebreaker filled
+  if (pickCount < REQUIRED_PICKS || !tbVal) {
+    const missing = [];
+    if (pickCount < REQUIRED_PICKS) missing.push(`${REQUIRED_PICKS - pickCount} pick${REQUIRED_PICKS - pickCount !== 1 ? 's' : ''} remaining`);
+    if (!tbVal) missing.push('tiebreaker score is required');
+    showToast(`Can't submit yet: ${missing.join(', ')}`, 'error');
+    return;
+  }
+
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.innerHTML = `
@@ -2622,6 +2635,12 @@ async function submitBracket() {
   if (!currentBracketId) return;
   const tbInput = document.getElementById("tiebreaker-input");
   if (tbInput) currentTiebreaker = tbInput.value ? parseInt(tbInput.value) : null;
+  // Double-check validation
+  const pickCount = Object.keys(currentPicks).length;
+  if (pickCount < 63 || currentTiebreaker === null || currentTiebreaker === undefined) {
+    showToast('All 63 picks and tiebreaker are required to submit', 'error');
+    return;
+  }
   try {
     await apiPost(`/api/brackets/${currentBracketId}/submit`, { picks: currentPicks, tiebreaker_score: currentTiebreaker });
     showToast("Bracket submitted and locked!", "success");
