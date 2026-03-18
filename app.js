@@ -777,6 +777,8 @@ function renderFinalFour(picks, locked, pickStatus) {
 }
 
 // ===== LEADERBOARD PAGE =====
+function isMobile() { return window.innerWidth <= 640; }
+
 function switchLbTab(tab) {
   lbTab = tab;
   render();
@@ -810,7 +812,7 @@ function renderBracketsLeaderboard() {
   const champCombined = leaderboardData.championship_combined;
   const gamesCompleted = leaderboardData.games_completed || 0;
 
-  return `
+  const scoringCard = `
     <div class="scoring-card">
       <h3>ESPN Scoring</h3>
       <div class="scoring-grid">
@@ -821,56 +823,107 @@ function renderBracketsLeaderboard() {
         <div class="scoring-item"><span class="scoring-round">Final Four</span><span class="scoring-pts">160 pts</span></div>
         <div class="scoring-item"><span class="scoring-round">Championship</span><span class="scoring-pts">320 pts</span></div>
       </div>
-    </div>
+    </div>`;
 
-    <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+  const infoBar = `
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
       <span style="font-size:13px; color:var(--text-muted);">${gamesCompleted} games completed</span>
       ${champCombined !== null ? `<span style="font-size:13px; color:var(--text-muted);">Championship total: ${champCombined}</span>` : ''}
       <button class="btn-secondary" onclick="refreshLeaderboard()" style="margin-left:auto; font-size:12px; padding:6px 12px;">Refresh</button>
+    </div>`;
+
+  if (entries.length === 0) {
+    return scoringCard + infoBar + '<div class="empty-state">No submitted brackets yet, or tournament hasn\'t started.</div>';
+  }
+
+  if (isMobile()) {
+    return scoringCard + infoBar + `
+      <div class="lb-cards">
+        ${entries.map((e, i) => {
+          const isMe = e.user_id === currentUser.id;
+          const avatarHtml = e.avatar_data
+            ? `<img src="${e.avatar_data}" style="width:100%;height:100%;object-fit:cover;">`
+            : (e.display_name||'').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+          const tbText = e.tiebreaker_score !== null ? e.tiebreaker_score : '-';
+          const tbDiff = e.tiebreaker_diff !== null ? ` (${e.tiebreaker_diff > 0 ? '+' : ''}${e.tiebreaker_diff})` : '';
+          return `
+            <div class="lb-card ${isMe ? 'lb-card-me' : ''}" onclick="viewBracket(${e.bracket_id})">
+              <div class="lb-card-rank">${e.rank}</div>
+              <div class="lb-card-avatar">${avatarHtml}</div>
+              <div class="lb-card-info">
+                <div class="lb-card-name">${escapeHtml(e.display_name)}</div>
+                <div class="lb-card-sub">${escapeHtml(e.label)} &middot; TB: ${tbText}${tbDiff}</div>
+              </div>
+              <div class="lb-card-value">${e.score}<span class="lb-card-unit">pts</span></div>
+            </div>`;
+        }).join('')}
+      </div>`;
+  }
+
+  return scoringCard + infoBar + `
+    <div class="leaderboard-table-wrap">
+      <table class="leaderboard-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th>Bracket</th>
+            <th>Score</th>
+            <th>TB</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${entries.map((e, i) => {
+            const isMe = e.user_id === currentUser.id;
+            return `
+              <tr class="${isMe ? 'lb-me' : ''}" onclick="viewBracket(${e.bracket_id})" style="cursor:pointer;">
+                <td class="lb-rank">${e.rank}</td>
+                <td class="lb-name">
+                  <div class="lb-avatar" style="width:28px;height:28px;border-radius:50%;background:var(--navy-100);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--navy-700);overflow:hidden;vertical-align:middle;margin-right:8px;">${e.avatar_data ? `<img src="${e.avatar_data}" style="width:100%;height:100%;object-fit:cover;">` : (e.display_name||'').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}</div>
+                  ${escapeHtml(e.display_name)}
+                </td>
+                <td>${escapeHtml(e.label)}</td>
+                <td class="lb-score">${e.score}</td>
+                <td class="lb-tb">${e.tiebreaker_score !== null ? e.tiebreaker_score : '-'}${e.tiebreaker_diff !== null ? ` <span style="font-size:11px;color:var(--text-faint);">(${e.tiebreaker_diff > 0 ? '+' : ''}${e.tiebreaker_diff})</span>` : ''}</td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
     </div>
-    ${entries.length === 0
-      ? '<div class="empty-state">No submitted brackets yet, or tournament hasn\'t started.</div>'
-      : `
-      <div class="leaderboard-table-wrap">
-        <table class="leaderboard-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Name</th>
-              <th>Bracket</th>
-              <th>Score</th>
-              <th>TB</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${entries.map((e, i) => {
-              const isMe = e.user_id === currentUser.id;
-              return `
-                <tr class="${isMe ? 'lb-me' : ''}" onclick="viewBracket(${e.bracket_id})" style="cursor:pointer;">
-                  <td class="lb-rank">${e.rank}</td>
-                  <td class="lb-name">
-                    <div class="lb-avatar" style="width:28px;height:28px;border-radius:50%;background:var(--navy-100);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--navy-700);overflow:hidden;vertical-align:middle;margin-right:8px;">${e.avatar_data ? `<img src="${e.avatar_data}" style="width:100%;height:100%;object-fit:cover;">` : (e.display_name||'').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}</div>
-                    ${escapeHtml(e.display_name)}
-                  </td>
-                  <td>${escapeHtml(e.label)}</td>
-                  <td class="lb-score">${e.score}</td>
-                  <td class="lb-tb">${e.tiebreaker_score !== null ? e.tiebreaker_score : '-'}${e.tiebreaker_diff !== null ? ` <span style="font-size:11px;color:var(--text-faint);">(${e.tiebreaker_diff > 0 ? '+' : ''}${e.tiebreaker_diff})</span>` : ''}</td>
-                </tr>
-              `;
-            }).join("")}
-          </tbody>
-        </table>
-      </div>
-    `}
   `;
 }
 
 function renderFriendBetsLeaderboard() {
   const standings = combinedStandings.standings || [];
-  // Sort by friend_net descending
   const sorted = [...standings].filter(s => s.friend_bets > 0 || s.friend_open > 0).sort((a, b) => b.friend_net - a.friend_net);
 
   if (sorted.length === 0) return '<div class="empty-state">No friend bets settled yet.</div>';
+
+  if (isMobile()) {
+    return `
+      <div class="lb-cards">
+        ${sorted.map((s, i) => {
+          const isMe = currentUser && s.user_id === currentUser.id;
+          const net = s.friend_net;
+          const netColor = net > 0 ? '#16a34a' : net < 0 ? '#dc2626' : 'var(--text-muted)';
+          const netLabel = net > 0 ? `+$${net.toFixed(0)}` : net < 0 ? `-$${Math.abs(net).toFixed(0)}` : 'Even';
+          const avatarHtml = s.avatar_data
+            ? `<img src="${s.avatar_data}" style="width:100%;height:100%;object-fit:cover;">`
+            : (s.name||'').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+          return `
+            <div class="lb-card ${isMe ? 'lb-card-me' : ''}">
+              <div class="lb-card-rank">${i + 1}</div>
+              <div class="lb-card-avatar">${avatarHtml}</div>
+              <div class="lb-card-info">
+                <div class="lb-card-name">${escapeHtml(s.name)}</div>
+                <div class="lb-card-sub"><span style="color:#16a34a;">W $${s.friend_won.toFixed(0)}</span> &middot; <span style="color:#dc2626;">L $${s.friend_lost.toFixed(0)}</span> &middot; ${s.friend_open} open</div>
+              </div>
+              <div class="lb-card-value" style="color:${netColor};">${netLabel}</div>
+            </div>`;
+        }).join('')}
+      </div>`;
+  }
 
   return `
     <div class="leaderboard-table-wrap">
@@ -922,10 +975,38 @@ function renderPuterLeaderboard() {
 
   if (sorted.length === 0) return '<div class="empty-state">No Puter bets settled yet.</div>';
 
-  return `
+  const bankrollBar = `
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
       <span style="font-size:13px; color:var(--text-muted);">Puter's bankroll: $${puterBalance.toFixed(0)} (${puterPnlLabel})</span>
-    </div>
+    </div>`;
+
+  if (isMobile()) {
+    return bankrollBar + `
+      <div class="lb-cards">
+        ${sorted.map((s, i) => {
+          const isMe = currentUser && s.user_id === currentUser.id;
+          const net = s.puter_net;
+          const netColor = net > 0 ? '#16a34a' : net < 0 ? '#dc2626' : 'var(--text-muted)';
+          const netLabel = net > 0 ? `+$${net.toFixed(0)}` : net < 0 ? `-$${Math.abs(net).toFixed(0)}` : 'Even';
+          const medal = i === 0 && net > 0 ? ' \u{1F451}' : '';
+          const avatarHtml = s.avatar_data
+            ? `<img src="${s.avatar_data}" style="width:100%;height:100%;object-fit:cover;">`
+            : (s.name||'').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+          return `
+            <div class="lb-card ${isMe ? 'lb-card-me' : ''}">
+              <div class="lb-card-rank">${i + 1}</div>
+              <div class="lb-card-avatar">${avatarHtml}</div>
+              <div class="lb-card-info">
+                <div class="lb-card-name">${escapeHtml(s.name)}${medal}</div>
+                <div class="lb-card-sub">${s.puter_bets} bet${s.puter_bets !== 1 ? 's' : ''}</div>
+              </div>
+              <div class="lb-card-value" style="color:${netColor};">${netLabel}</div>
+            </div>`;
+        }).join('')}
+      </div>`;
+  }
+
+  return bankrollBar + `
     <div class="leaderboard-table-wrap">
       <table class="leaderboard-table">
         <thead>
@@ -984,8 +1065,36 @@ function renderOverallLeaderboard() {
 
   if (combined.length === 0) return '<div class="empty-state">No data yet.</div>';
 
-  return `
-    <div style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">Combined P&L from friend bets + Puter bets. Bracket pot payouts settle separately.</div>
+  const descLine = `<div style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">Combined P&L from friend bets + Puter bets. Bracket pot payouts settle separately.</div>`;
+
+  if (isMobile()) {
+    const fmtNet = (v) => v > 0 ? `+$${v.toFixed(0)}` : v < 0 ? `-$${Math.abs(v).toFixed(0)}` : '-';
+    return descLine + `
+      <div class="lb-cards">
+        ${combined.map((s, i) => {
+          const isMe = currentUser && s.user_id === currentUser.id;
+          const tColor = s.total_net > 0 ? '#16a34a' : s.total_net < 0 ? '#dc2626' : 'var(--text-muted)';
+          const fColor = s.friend_net > 0 ? '#16a34a' : s.friend_net < 0 ? '#dc2626' : 'var(--text-muted)';
+          const pColor = s.puter_net > 0 ? '#16a34a' : s.puter_net < 0 ? '#dc2626' : 'var(--text-muted)';
+          const medal = i === 0 && s.total_net > 0 ? ' \u{1F451}' : '';
+          const avatarHtml = s.avatar_data
+            ? `<img src="${s.avatar_data}" style="width:100%;height:100%;object-fit:cover;">`
+            : (s.name||'').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+          return `
+            <div class="lb-card ${isMe ? 'lb-card-me' : ''}">
+              <div class="lb-card-rank">${i + 1}</div>
+              <div class="lb-card-avatar">${avatarHtml}</div>
+              <div class="lb-card-info">
+                <div class="lb-card-name">${escapeHtml(s.name)}${medal}</div>
+                <div class="lb-card-sub">${s.bracket_score > 0 ? s.bracket_score + ' pts' : 'No bracket'} &middot; <span style="color:${fColor};">F ${fmtNet(s.friend_net)}</span> &middot; <span style="color:${pColor};">P ${fmtNet(s.puter_net)}</span></div>
+              </div>
+              <div class="lb-card-value" style="color:${tColor};">${fmtNet(s.total_net)}</div>
+            </div>`;
+        }).join('')}
+      </div>`;
+  }
+
+  return descLine + `
     <div class="leaderboard-table-wrap">
       <table class="leaderboard-table">
         <thead>
