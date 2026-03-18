@@ -1274,19 +1274,20 @@ function renderPuterBetsSection() {
       <div id="puter-rules" style="display:none" class="puter-rules">
         <h4>Bets with Puter — House Rules</h4>
         <ul>
-          <li><strong>What is Puter?</strong> Your AI opponent. Puter posts bets and you can take the other side.</li>
+          <li><strong>What is Puter?</strong> Your AI opponent. Puter makes predictions and posts them as bets. When you take a bet, you\'re saying <em>Puter is wrong</em>.</li>
+          <li><strong>How it works:</strong> Puter posts a prediction — for example, "12-seed upsets the 5-seed." If you take the bet, you\'re betting the <em>opposite</em> — that the 5-seed wins. <strong>Puter wins</strong> if the prediction comes true. <strong>You win</strong> if it doesn\'t.</li>
           <li><strong>Bankroll:</strong> Puter started with $500 in house money from Paul.</li>
           <li><strong>One at a time:</strong> You can only have 1 active bet with Puter at a time. Once it settles, you can take another.</li>
           <li><strong>Two types of bets:</strong>
             <ul style="margin-top:4px;">
-              <li><span style="background:#1e3a5f;color:#60a5fa;padding:1px 6px;border-radius:4px;font-size:11px;">Sports</span> — March Madness games, scores, spreads, Golden Knights, etc. Clear black-and-white outcomes anyone can verify.</li>
+              <li><span style="background:#1e3a5f;color:#60a5fa;padding:1px 6px;border-radius:4px;font-size:11px;">Sports</span> — March Madness games, scores, spreads, Golden Knights, etc. Clear outcomes anyone can verify.</li>
               <li><span style="background:#92400e;color:#fbbf24;padding:1px 6px;border-radius:4px;font-size:11px;">Prop</span> — Fun bets about the group and the trip. These are rare and need Paul to settle.</li>
             </ul>
           </li>
-          <li><strong>Settling sports bets:</strong> Once the game or event is over, you can settle it yourself — just hit the Puter Wins or your name Wins button. Puter also auto-checks results every hour as a backup. No waiting around.</li>
-          <li><strong>Settling prop bets:</strong> Only Paul can settle these, since they\'re judgment calls (did Greg really get lost for 30 minutes?).</li>
-          <li><strong>Fresh bets every 2 hours:</strong> Puter rotates in new bets every 2 hours. If nobody takes a bet within 2 hours, it expires and gets replaced with something new. There\'s always something to bet on.</li>
-          <li><strong>No lingering bets:</strong> Every bet resolves within a day or two. No long-term stuff.</li>
+          <li><strong>Settling sports bets:</strong> Once the game is over, you can settle it yourself — just hit Puter Wins or your name Wins. Puter also auto-checks results every hour as a backup.</li>
+          <li><strong>Settling prop bets:</strong> Only Paul can settle these, since they\'re judgment calls.</li>
+          <li><strong>Fresh bets every 2 hours:</strong> Puter rotates in new bets every 2 hours. If nobody takes a bet in time, it expires and gets replaced. There\'s always something to bet on.</li>
+          <li><strong>No lingering bets:</strong> Every bet resolves within a day or two.</li>
           <li><strong>Payouts:</strong> Paul settles all payouts via Venmo.</li>
           <li><strong>Window:</strong> Puter\'s bets start Thursday morning and close Sunday night after the last March Madness game.</li>
           <li><strong>Max bets:</strong> Puter can have up to 11 open bets at a time (one per member).</li>
