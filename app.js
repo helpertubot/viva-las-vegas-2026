@@ -1287,6 +1287,7 @@ function renderPuterBetsSection() {
           <li><strong>Settling sports bets:</strong> Once the game is over, you can settle it yourself — just hit Puter Wins or your name Wins. Puter also auto-checks results every hour as a backup.</li>
           <li><strong>Settling prop bets:</strong> Only Paul can settle these, since they\'re judgment calls.</li>
           <li><strong>Fresh bets every 2 hours:</strong> Puter rotates in new bets every 2 hours. If nobody takes a bet in time, it expires and gets replaced. There\'s always something to bet on.</li>
+          <li><strong>No ambiguity:</strong> Every bet is specific. Sports bets name both teams, seeds, round, and a clear outcome (e.g. "(7) Kentucky beats (2) Iowa St. in Round 1" not just "Kentucky wins"). Prop bets define exactly what counts and by when.</li>
           <li><strong>No lingering bets:</strong> Every bet resolves within a day or two.</li>
           <li><strong>Payouts:</strong> Paul settles all payouts via Venmo.</li>
           <li><strong>Window:</strong> Puter\'s bets start Thursday morning and close Sunday night after the last March Madness game.</li>
