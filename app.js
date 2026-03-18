@@ -784,14 +784,14 @@ function switchLbTab(tab) {
 
 function renderLeaderboardPage() {
   const tabStyle = (t) => `
-    padding:8px 16px; font-size:13px; font-weight:600; border:none; cursor:pointer; border-radius:6px 6px 0 0;
+    padding:8px 12px; font-size:12px; font-weight:600; border:none; cursor:pointer; border-radius:6px 6px 0 0; white-space:nowrap; flex-shrink:0;
     ${lbTab === t ? 'background:var(--navy-100); color:var(--navy-800);' : 'background:transparent; color:var(--text-muted);'}
   `;
 
   return `
     <h2 class="section-title">Leaderboard</h2>
 
-    <div style="display:flex; gap:4px; border-bottom:2px solid var(--navy-200); margin-bottom:16px;">
+    <div class="lb-tabs" style="display:flex; gap:2px; border-bottom:2px solid var(--navy-200); margin-bottom:16px; overflow-x:auto; -webkit-overflow-scrolling:touch;">
       <button style="${tabStyle('brackets')}" onclick="switchLbTab('brackets')">\u{1F3C0} Brackets</button>
       <button style="${tabStyle('bets')}" onclick="switchLbTab('bets')">\u{1F91D} Friend Bets</button>
       <button style="${tabStyle('puter')}" onclick="switchLbTab('puter')">\u{1F916} vs Puter</button>
@@ -881,7 +881,7 @@ function renderFriendBetsLeaderboard() {
             <th>Name</th>
             <th style="text-align:center;">Won</th>
             <th style="text-align:center;">Lost</th>
-            <th style="text-align:center;">Open</th>
+            <th style="text-align:center;" class="lb-col-open">Open</th>
             <th style="text-align:right;">Net</th>
           </tr>
         </thead>
@@ -993,8 +993,8 @@ function renderOverallLeaderboard() {
             <th>#</th>
             <th>Name</th>
             <th style="text-align:center;">Bracket</th>
-            <th style="text-align:right;">Friends</th>
-            <th style="text-align:right;">Puter</th>
+            <th style="text-align:right;" class="lb-col-friends">Friends</th>
+            <th style="text-align:right;" class="lb-col-puter">Puter</th>
             <th style="text-align:right;">Total</th>
           </tr>
         </thead>
