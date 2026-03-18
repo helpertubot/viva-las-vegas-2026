@@ -817,6 +817,13 @@ img { display: block; max-width: 100%; }
 .bracket-card-badge.submitted { background: var(--green-100); color: var(--green-600); }
 .bracket-card-badge.draft { background: var(--orange-100); color: var(--orange-600); }
 
+.bracket-card-delete {
+  background: none; border: none; color: var(--text-muted); cursor: pointer;
+  padding: 4px; border-radius: 6px; display: flex; align-items: center;
+  transition: all var(--transition);
+}
+.bracket-card-delete:hover { color: #dc2626; background: rgba(220,38,38,0.08); }
+
 .bracket-card-stats {
   display: flex;
   gap: 24px;
