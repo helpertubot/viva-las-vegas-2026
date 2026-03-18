@@ -900,7 +900,7 @@ function renderFriendBetsLeaderboard() {
                 </td>
                 <td style="text-align:center;color:#16a34a;">$${s.friend_won.toFixed(0)}</td>
                 <td style="text-align:center;color:#dc2626;">$${s.friend_lost.toFixed(0)}</td>
-                <td style="text-align:center;color:var(--text-muted);">${s.friend_open}</td>
+                <td style="text-align:center;color:var(--text-muted);" class="lb-col-open lb-hide-mobile">${s.friend_open}</td>
                 <td class="lb-score" style="${netColor}font-weight:700;">${netLabel}</td>
               </tr>
             `;
@@ -1014,8 +1014,8 @@ function renderOverallLeaderboard() {
                   ${escapeHtml(s.name)}${medal}
                 </td>
                 <td style="text-align:center;">${s.bracket_score > 0 ? s.bracket_score + ' pts' : '-'}</td>
-                <td style="text-align:right;${fColor}font-weight:600;">${fmtNet(s.friend_net)}</td>
-                <td style="text-align:right;${pColor}font-weight:600;">${fmtNet(s.puter_net)}</td>
+                <td style="text-align:right;${fColor}font-weight:600;" class="lb-col-friends lb-hide-mobile">${fmtNet(s.friend_net)}</td>
+                <td style="text-align:right;${pColor}font-weight:600;" class="lb-col-puter lb-hide-mobile">${fmtNet(s.puter_net)}</td>
                 <td class="lb-score" style="${tColor}font-weight:700;">${fmtNet(s.total_net)}</td>
               </tr>
             `;
