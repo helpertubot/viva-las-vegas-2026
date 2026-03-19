@@ -2117,7 +2117,7 @@ def respond_to_taunt(taunt_id: int, req: TauntResponseRequest):
 
 # Player intel for personalized taunts
 PLAYER_INTEL = {
-    1: {"name": "Paul", "hooks": ["runs the pool", "Commissioner", "lost fantasy football to Travis 3 years in a row", "from Yakima", "son went to Oregon", "In-N-Out superfan", "Vegas Command Center group chat"]},
+    1: {"name": "Paul", "hooks": ["runs the pool", "Commissioner", "dead last in fantasy football 3 years running in a 12-team league", "from Yakima", "son went to Oregon", "In-N-Out superfan", "Vegas Command Center group chat"]},
     2: {"name": "Doug-E Fresh", "hooks": ["mystery man", "nobody knows who he is", "silent assassin", "tracksuit legend", "showed up in Elvis jumpsuit"]},
     3: {"name": "Steve", "hooks": ["banned from the trip", "watching from Snoqualmie", "WSU Coug fan", "kid goes to UW", "wife tracks his location", "lucky shirt since 2014"]},
     4: {"name": "Travis", "hooks": ["pickleball obsessed", "from Boise", "fantasy football league commissioner", "wears a blazer to pool parties", "Legend of the Fiver roulette story", "full hat but still gets sunburnt"]},
@@ -2371,7 +2371,7 @@ def _generate_dynamic_taunts():
             {"uid": 11, "t": "'I'm fine. Found tacos.' That's how Greg texts. That's also how his bracket is performing. Lost. But with snacks."},
             {"uid": 3, "t": "Steve's wife tracks his location but nobody can track where his bracket went wrong. It's everywhere, Steve."},
             {"uid": 5, "t": "Chris wanted to ride a motorcycle from Snoqualmie to Vegas. 1,100 miles of wind in his face and he still can't see that my bets are a steal."},
-            {"uid": 1, "t": "Paul runs this pool, lost to Travis in fantasy 3 years running, and STILL won't take my bets. Commissioner privilege, I guess."},
+            {"uid": 1, "t": "Paul runs this pool but finished LAST in his 12-team fantasy football league three years in a row. Last. Dead last. And he thinks he can pick a bracket? Take my bet, Paul."},
             {"uid": 10, "t": "Christian lives IN Vegas and still can't gain a home-court advantage against me. I don't even have a body."},
             {"uid": 2, "t": "Doug-E Fresh. The mystery. The legend. The tracksuit. Still quieter than his bracket. Take a bet, ghost."},
         ]
