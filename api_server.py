@@ -22,6 +22,7 @@ from typing import Optional
 import psycopg2
 import psycopg2.extras
 import random as _random
+from pywebpush import webpush, WebPushException
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, stream=sys.stdout,
@@ -40,6 +41,11 @@ def verify_password(password: str, stored_hash: str) -> bool:
         return False
     salt, h = stored_hash.split(":", 1)
     return hashlib.sha256(f"{salt}:{password}".encode()).hexdigest() == h
+
+# VAPID keys for web push notifications
+VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "BBh7seIzdG7bt6GZgC1Lo-8NwSAKg68kCly7lNxXjVwY4U1wZyNImcYTOxhp0cVtDkYjJrI3s6TjTyfs-o5mFWU")
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "_A9U3yNLB1HthiW_iW8ojXhXbixOeoJQIBRmbdseX-E")
+VAPID_CLAIMS = {"sub": "mailto:prcummins@gmail.com"}
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
@@ -175,6 +181,18 @@ def init_db(conn):
     cur.execute("ALTER TABLE bets ADD COLUMN IF NOT EXISTS closed_at DOUBLE PRECISION")
     # Expiration for Puter bets
     cur.execute("ALTER TABLE bets ADD COLUMN IF NOT EXISTS expires_at DOUBLE PRECISION")
+    # Push notification subscriptions
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            endpoint TEXT NOT NULL,
+            p256dh TEXT NOT NULL,
+            auth TEXT NOT NULL,
+            created_at DOUBLE PRECISION NOT NULL,
+            UNIQUE(user_id, endpoint)
+        );
+    """)
 
     conn.commit()
     cur.close()
@@ -2416,6 +2434,117 @@ def _generate_dynamic_taunts():
 
 
 
+# ---- Push Notifications ----
+
+class PushSubscribeRequest(BaseModel):
+    user_id: int
+    endpoint: str
+    p256dh: str
+    auth: str
+
+@app.get("/api/vapid-public-key")
+def get_vapid_key():
+    return {"public_key": VAPID_PUBLIC_KEY}
+
+@app.post("/api/push/subscribe")
+def push_subscribe(req: PushSubscribeRequest):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, created_at)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (user_id, endpoint) DO UPDATE SET p256dh = %s, auth = %s, created_at = %s
+        """, (req.user_id, req.endpoint, req.p256dh, req.auth, time.time(),
+              req.p256dh, req.auth, time.time()))
+        conn.commit()
+        return {"ok": True}
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Push subscribe error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+@app.post("/api/push/unsubscribe")
+def push_unsubscribe(req: PushSubscribeRequest):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM push_subscriptions WHERE user_id = %s AND endpoint = %s",
+                    (req.user_id, req.endpoint))
+        conn.commit()
+        return {"ok": True}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+def send_push_to_user(user_id, title, body, url="/", tag="puter", exclude_user_id=None):
+    """Send push notification to a specific user's subscribed devices."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = %s", (user_id,))
+        subs = fetchall_dict(cur)
+        for sub in subs:
+            try:
+                webpush(
+                    subscription_info={
+                        "endpoint": sub["endpoint"],
+                        "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]}
+                    },
+                    data=json.dumps({"title": title, "body": body, "url": url, "tag": tag}),
+                    vapid_private_key=VAPID_PRIVATE_KEY,
+                    vapid_claims=VAPID_CLAIMS
+                )
+            except WebPushException as e:
+                logger.warning(f"Push failed for user {user_id}: {e}")
+                # Remove invalid subscriptions (410 Gone = unsubscribed)
+                if hasattr(e, 'response') and e.response and e.response.status_code in (404, 410):
+                    cur.execute("DELETE FROM push_subscriptions WHERE endpoint = %s", (sub["endpoint"],))
+                    conn.commit()
+            except Exception as e:
+                logger.warning(f"Push error for user {user_id}: {e}")
+    finally:
+        conn.close()
+
+class PushBroadcastRequest(BaseModel):
+    title: str
+    body: str
+    url: Optional[str] = "/"
+    tag: Optional[str] = "puter"
+    target_user_id: Optional[int] = None
+
+@app.post("/api/push/send")
+def send_push_notification(req: PushBroadcastRequest):
+    """Send a push notification to one user or all users."""
+    try:
+        if req.target_user_id:
+            send_push_to_user(req.target_user_id, req.title, req.body, req.url or "/", req.tag or "puter")
+        else:
+            send_push_to_all(req.title, req.body, req.url or "/", req.tag or "puter")
+        return {"ok": True}
+    except Exception as e:
+        logger.error(f"Push send error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def send_push_to_all(title, body, url="/", tag="puter", exclude_user_id=None):
+    """Send push notification to all subscribed users."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        if exclude_user_id:
+            cur.execute("SELECT DISTINCT user_id FROM push_subscriptions WHERE user_id != %s", (exclude_user_id,))
+        else:
+            cur.execute("SELECT DISTINCT user_id FROM push_subscriptions")
+        user_ids = [row[0] for row in cur.fetchall()]
+    finally:
+        conn.close()
+    for uid in user_ids:
+        send_push_to_user(uid, title, body, url, tag)
+
 # ---- Serve static files ----
 STATIC_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -2426,8 +2555,12 @@ def serve_index():
 @app.get("/{filename}")
 def serve_static(filename: str):
     filepath = os.path.join(STATIC_DIR, filename)
-    if os.path.isfile(filepath) and filename in ("app.js", "style.css", "index.html"):
-        return FileResponse(filepath, headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"})
+    if os.path.isfile(filepath) and filename in ("app.js", "style.css", "index.html", "sw.js"):
+        headers = {"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
+        if filename == "sw.js":
+            headers["Service-Worker-Allowed"] = "/"
+            headers["Content-Type"] = "application/javascript"
+        return FileResponse(filepath, headers=headers)
     raise HTTPException(status_code=404, detail="Not found")
 
 if __name__ == "__main__":

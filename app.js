@@ -87,6 +87,101 @@ let allStays = [];
 let puterTaunts = [];
 let dynamicTaunts = [];
 let combinedTaunts = [];
+let pushSubscribed = false;
+let pushDismissed = false;
+
+// ===== PUSH NOTIFICATIONS =====
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
+  try {
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    return reg;
+  } catch (e) {
+    console.warn('SW registration failed:', e);
+    return null;
+  }
+}
+
+async function subscribeToPush() {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const keyRes = await apiGet('/api/vapid-public-key');
+    const pubKey = keyRes.public_key;
+    // Convert URL-safe base64 to Uint8Array
+    const padding = '='.repeat((4 - pubKey.length % 4) % 4);
+    const raw = atob(pubKey.replace(/-/g, '+').replace(/_/g, '/') + padding);
+    const arr = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: arr
+    });
+    const subJson = sub.toJSON();
+    await apiPost('/api/push/subscribe', {
+      user_id: currentUser.id,
+      endpoint: subJson.endpoint,
+      p256dh: subJson.keys.p256dh,
+      auth: subJson.keys.auth
+    });
+    pushSubscribed = true;
+    localStorage.setItem('pushSubscribed', 'true');
+    showToast('Puter can now reach you \u{1F916}');
+    render();
+  } catch (e) {
+    console.warn('Push subscribe failed:', e);
+    if (e.name === 'NotAllowedError') {
+      showToast('Notifications blocked — check browser settings', 'error');
+    }
+  }
+}
+
+async function checkPushStatus() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  if (localStorage.getItem('pushDismissed')) { pushDismissed = true; return; }
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    pushSubscribed = !!sub;
+    if (sub) localStorage.setItem('pushSubscribed', 'true');
+  } catch (e) {
+    // ignore
+  }
+}
+
+function dismissPushPrompt() {
+  pushDismissed = true;
+  localStorage.setItem('pushDismissed', 'true');
+  render();
+}
+
+function renderPushPrompt() {
+  if (pushSubscribed || pushDismissed || !currentUser) return '';
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return '';
+  if (Notification.permission === 'denied') return '';
+  if (Notification.permission === 'granted' && localStorage.getItem('pushSubscribed')) return '';
+  
+  const messages = [
+    `Psst... ${currentUser.display_name}. Puter has a message for you. Want to hear it?`,
+    `Hey ${currentUser.display_name}. Puter knows something about your bracket. Want the inside scoop?`,
+    `${currentUser.display_name}, Puter's been watching. Enable notifications before you miss something good.`,
+    `Puter has intel on your friends. Turn on notifications so you don't miss the drama.`,
+  ];
+  const msg = messages[Math.floor(Date.now() / 60000) % messages.length];
+  
+  return `
+    <div class="puter-push-prompt">
+      <div class="puter-push-prompt-inner">
+        <span class="puter-push-icon">\u{1F916}</span>
+        <div class="puter-push-text">${msg}</div>
+        <div class="puter-push-buttons">
+          <button class="puter-push-yes" onclick="subscribeToPush()">I'm in</button>
+          <button class="puter-push-no" onclick="dismissPushPrompt()">Not now</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
 
 // ===== API HELPERS =====
 async function apiGet(path) {
@@ -446,6 +541,7 @@ function renderHome() {
         <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQgAAAEICAIAAAAslP2oAAAE/0lEQVR4nO3dQW4lNRRAUYLYEBtgQSyoF8QGWNJnjHQ9sOQnVyXnDFH6p9LkylK9tv31+Xx+A/7v99sPAE8kDAjCgCAMCMKAIAwIwoAgDAjCgCAMCMKAIAwIwoAgDAjCgPDH7h/469e/E89x3D9//5n/fff5V58z7dTf8/Tzv/33YcWKAUEYEIQBQRgQhAFBGBCEAWF7jrHylvf9p+Ybu6af89bXr7zl92HFigFBGBCEAUEYEIQBQRgQhAHh2Bxj5Wn7CnafZ/q9/urzp5/z1j6Kp/0+rFgxIAgDgjAgCAOCMCAIA4IwIIzPMZ5m9/33qTnD9H6G3ee8tV/iLawYEIQBQRgQhAFBGBCEAUEYEH7cHOOUp+2veNq+i7ezYkAQBgRhQBAGBGFAEAYEYUAYn2M87d/939qfcGp/xds97fdhxYoBQRgQhAFBGBCEAUEYEIQB4dgc47u+d5926x7uU8+z+zlvYcWAIAwIwoAgDAjCgCAMCMKA8PX5fG4/wyOcuu/i1n3bb9nn8BZWDAjCgCAMCMKAIAwIwoAgDAjb+zHesn9g5dR926fuu3jL9901va9j+vfNigFBGBCEAUEYEIQBQRgQhAFhe45x6z7p6XnI0/ZXrEy/v3/7z3uKFQOCMCAIA4IwIAgDgjAgCAPCtXu+b+1P2P38U6bnCbtOff6tezOmfx+sGBCEAUEYEIQBQRgQhAFBGBC278d42v3NT5uT/LT9EtNu3fthxYAgDAjCgCAMCMKAIAwIwoBwbD/GrTnArfsfpt+v37oX4tY5Uae4HwMGCQOCMCAIA4IwIAgDgjAgHJtj3Lpve2V37jG9L+K7nlt1a7+H+zHgAmFAEAYEYUAQBgRhQBAGhPH9GNNO7VuYPq/pu77v/673f1sxIAgDgjAgCAOCMCAIA4IwIGzfj3HL9DlLT3vv/vav33VrDrZixYAgDAjCgCAMCMKAIAwIwoBw7VypW9/31HlKu279/Uzfp7HL/RjwYsKAIAwIwoAgDAjCgCAMCNfOlXrLPoFb94jfur/i1nxj5db8x4oBQRgQhAFBGBCEAUEYEIQBYXuOMX2O0PR8Y+Ut95Tvfv2tudD056y4HwMGCQOCMCAIA4IwIAgDgjAgXLsf49Y+h5Wn3Qtxaz4z7Wn3YKxYMSAIA4IwIAgDgjAgCAOCMCBc249xyq15yFvmCU97zul9Haf+/1oxIAgDgjAgCAOCMCAIA4IwIFzbj3HLrfOUdk3v99j9vm/5udzzDYOEAUEYEIQBQRgQhAFBGBBevx9j5da947uf/3an5gZPO2/KigFBGBCEAUEYEIQBQRgQhAFhe46xcus99PQ5RU+7P3vl1vlLT5s/nGLFgCAMCMKAIAwIwoAgDAjCgHBsjrFy63ykU26dpzR9ztXT9pPcmv+sWDEgCAOCMCAIA4IwIAgDgjAgjM8x3mJ6f8L03GD6fKdTnz/9c52ab1gxIAgDgjAgCAOCMCAIA4IwIPy4OcbTzn1aect95KdMz0N2WTEgCAOCMCAIA4IwIAgDgjAgfH0+n60/MH3fwq5bzzP9Hn36PKun3dex+znTrBgQhAFBGBCEAUEYEIQBQRgQju3HmH6vf8r0+Uu7ps9Zest93rfmNitWDAjCgCAMCMKAIAwIwoAgDAjb+zHgJ7BiQBAGBGFAEAYEYUAQBgRhQBAGBGFAEAYEYUAQBgRhQBAGBGFA+A9nWCQ+2BjRmgAAAABJRU5ErkJggg==" alt="Venmo QR Code" class="venmo-qr-img" />
       </a>
     </div>
+    ${renderPushPrompt()}
     ${renderPuterSaysCard()}
 
     <h2 class="section-title">Members</h2>
@@ -3251,6 +3347,10 @@ async function init() {
   // Preload live schedule in background
   loadLiveSchedule().then(() => {
     if (currentUser && currentView === 'home') render();
+  });
+  // Register service worker and check push status
+  registerServiceWorker().then(() => {
+    if (currentUser) checkPushStatus().then(() => { if (currentView === 'home') render(); });
   });
 }
 
