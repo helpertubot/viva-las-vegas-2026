@@ -1866,6 +1866,31 @@ def get_tournament_schedule():
                 games = parse_espn_games(data)
                 all_games.extend(games)
 
+        # Auto-update tournament_results for any games with scores
+        try:
+            cur = get_cursor()
+            for g in all_games:
+                if g.get("game_state") in ("final", "in_progress") and g.get("game_key"):
+                    cur.execute("""
+                        UPDATE tournament_results SET
+                            team1_score = %s, team2_score = %s,
+                            winner_name = %s, winner_seed = %s,
+                            game_state = %s, updated_at = %s
+                        WHERE game_key = %s AND (game_state != 'final' OR game_state IS NULL)
+                    """, (
+                        g["team1_score"], g["team2_score"],
+                        g["winner_name"], g["winner_seed"],
+                        g["game_state"], now, g["game_key"]
+                    ))
+            db.commit()
+            cur.close()
+        except Exception as ue:
+            logger.error(f"Auto-update results error: {ue}")
+            try:
+                db.rollback()
+            except Exception:
+                pass
+
         result = {"games": all_games, "fetched_at": now}
         _schedule_cache = {"data": result, "ts": now}
         return result
