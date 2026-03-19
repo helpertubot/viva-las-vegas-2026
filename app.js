@@ -85,6 +85,8 @@ let tournamentResults = { results: [] };
 let liveSchedule = { games: [] };
 let allStays = [];
 let puterTaunts = [];
+let dynamicTaunts = [];
+let combinedTaunts = [];
 
 // ===== API HELPERS =====
 async function apiGet(path) {
@@ -328,15 +330,27 @@ function renderCurrentView() {
 
 // ===== HOME =====
 function renderPuterSaysCard() {
-  if (!puterTaunts || puterTaunts.length === 0) return '';
+  // Combine static + dynamic taunts, pick a fresh mix each render
+  const allTaunts = [...puterTaunts, ...dynamicTaunts];
+  if (!allTaunts || allTaunts.length === 0) return '';
 
-  // Pick 2-3 taunts based on a 2-hour rotation window
-  const windowIdx = Math.floor(Date.now() / (2 * 60 * 60 * 1000));
-  const count = Math.min(3, puterTaunts.length);
+  // Seeded shuffle based on minute so it changes frequently but stays stable within a page session
+  const seed = Math.floor(Date.now() / 60000); // changes every minute
+  const shuffled = [...allTaunts].sort((a, b) => {
+    const ha = ((seed * 2654435761 + (typeof a.id === 'string' ? parseInt(a.id.replace(/\D/g,'')) || 0 : a.id)) >>> 0) % 1000;
+    const hb = ((seed * 2654435761 + (typeof b.id === 'string' ? parseInt(b.id.replace(/\D/g,'')) || 0 : b.id)) >>> 0) % 1000;
+    return ha - hb;
+  });
+
+  // Pick a good mix: 1 targeted, 1 general/banter, 1 bet-related or intel
+  const targeted = shuffled.filter(t => t.target_user_id);
+  const general = shuffled.filter(t => !t.target_user_id);
   const selected = [];
-  for (let i = 0; i < count; i++) {
-    selected.push(puterTaunts[(windowIdx + i) % puterTaunts.length]);
-  }
+  if (targeted.length > 0) selected.push(targeted[0]);
+  if (general.length > 0) selected.push(general[0]);
+  // Add a 3rd that's different from what we have
+  const remaining = shuffled.filter(t => !selected.includes(t));
+  if (remaining.length > 0) selected.push(remaining[0]);
 
   return `
     <div class="puter-says-card">
@@ -1512,13 +1526,25 @@ function formatTimeLeft(expiresAt) {
 }
 
 function renderBetTaunt(bet) {
-  if (!puterTaunts || puterTaunts.length === 0) return '';
-  // Look for a taunt targeted at the current user, or a general taunt as fallback
+  const allTaunts = [...puterTaunts, ...dynamicTaunts];
+  if (!allTaunts || allTaunts.length === 0) return '';
+
   const userId = currentUser ? currentUser.id : null;
-  let taunt = puterTaunts.find(t => t.target_user_id === userId);
+  const isOpen = !bet.closed && !bet.taker_id;
+
+  // For open Puter bets, prioritize bet-bait taunts for THIS bet
+  if (isOpen) {
+    const betBait = dynamicTaunts.find(t => t.bet_id === bet.id);
+    if (betBait) {
+      return `<div class="puter-speech-bubble"><span class="puter-speech-icon">\u{1F916}</span><span class="puter-speech-text">${escapeHtml(betBait.taunt)}</span></div>`;
+    }
+  }
+
+  // Next try a targeted taunt for the current user
+  let taunt = allTaunts.find(t => t.target_user_id === userId);
   if (!taunt) {
-    // Pick a general taunt based on bet id for deterministic selection
-    const general = puterTaunts.filter(t => !t.target_user_id);
+    // Pick from general/banter taunts using bet id for variety
+    const general = allTaunts.filter(t => !t.target_user_id);
     if (general.length > 0) taunt = general[bet.id % general.length];
   }
   if (!taunt) return '';
@@ -3137,10 +3163,15 @@ async function loadStays() {
 
 async function loadPuterTaunts() {
   try {
-    const data = await apiGet(`/api/puter-taunts${currentUser ? `?user_id=${currentUser.id}` : ''}`);
-    puterTaunts = data.taunts || [];
+    const [staticData, dynData] = await Promise.all([
+      apiGet(`/api/puter-taunts${currentUser ? `?user_id=${currentUser.id}` : ''}`),
+      apiGet('/api/puter-taunts/dynamic').catch(() => ({ taunts: [] }))
+    ]);
+    puterTaunts = staticData.taunts || [];
+    dynamicTaunts = dynData.taunts || [];
   } catch (e) {
     puterTaunts = [];
+    dynamicTaunts = [];
   }
 }
 

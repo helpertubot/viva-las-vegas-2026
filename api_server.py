@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from typing import Optional
 import psycopg2
 import psycopg2.extras
+import random as _random
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, stream=sys.stdout,
@@ -1998,6 +1999,44 @@ class TauntResponseRequest(BaseModel):
     user_id: int
     response: str
 
+@app.get("/api/puter-taunts/dynamic")
+def get_dynamic_taunts():
+    """Generate fresh taunts from live pool data. Returns a randomized mix each call."""
+    try:
+        all_dynamic = _generate_dynamic_taunts()
+        _random.shuffle(all_dynamic)
+        # Ensure variety: pick at most 2 per type
+        by_type = {}
+        selected = []
+        for t in all_dynamic:
+            tt = t["taunt_type"]
+            if tt not in by_type:
+                by_type[tt] = 0
+            if by_type[tt] < 2:
+                selected.append(t)
+                by_type[tt] += 1
+            if len(selected) >= 15:
+                break
+
+        # Add target names
+        conn = get_db()
+        cur = conn.cursor()
+        for t in selected:
+            if t.get("target_user_id"):
+                cur.execute("SELECT display_name FROM users WHERE id = %s", (t["target_user_id"],))
+                row = cur.fetchone()
+                t["target_name"] = row[0] if row else None
+            else:
+                t["target_name"] = None
+            t["id"] = f"dyn-{_random.randint(10000,99999)}"
+            t["responses"] = []
+        conn.close()
+
+        return {"taunts": selected}
+    except Exception as e:
+        logger.error(f"Dynamic taunts error: {e}")
+        return {"taunts": []}
+
 @app.get("/api/puter-taunts")
 def get_puter_taunts(user_id: int = None, bet_id: int = None):
     conn = get_db()
@@ -2074,6 +2113,276 @@ def respond_to_taunt(taunt_id: int, req: TauntResponseRequest):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
+
+
+# ---- Dynamic Puter Taunts (generated from live data) ----
+
+# Player intel for personalized taunts
+PLAYER_INTEL = {
+    1: {"name": "Paul", "hooks": ["runs the pool", "Commissioner", "lost fantasy football to Travis 3 years in a row", "from Yakima", "son went to Oregon", "In-N-Out superfan", "Vegas Command Center group chat"]},
+    2: {"name": "Doug-E Fresh", "hooks": ["mystery man", "nobody knows who he is", "silent assassin", "tracksuit legend", "showed up in Elvis jumpsuit"]},
+    3: {"name": "Steve", "hooks": ["banned from the trip", "watching from Snoqualmie", "WSU Coug fan", "kid goes to UW", "wife tracks his location", "lucky shirt since 2014"]},
+    4: {"name": "Travis", "hooks": ["pickleball obsessed", "from Boise", "fantasy football league commissioner", "wears a blazer to pool parties", "Legend of the Fiver roulette story", "full hat but still gets sunburnt"]},
+    5: {"name": "Chris", "hooks": ["motorcycle rider", "from Snoqualmie", "vibes-based strategy", "gift shop addict", "started a craps table chant"]},
+    6: {"name": "John", "hooks": ["Bears fan", "hit himself with his own pickleball paddle", "fanny pack vault", "explains fantasy football to strangers", "4 AM steak negotiator"]},
+    7: {"name": "Chris D.", "hooks": ["I like waffle fries", "Sheeeeebeloff", "fastest in the group", "Oregon State fan", "Hawaiian shirt collection", "wore sunglasses indoors", "coupon at a casino bar"]},
+    8: {"name": "Aaron", "hooks": ["golden retriever energy", "Beer Park salad incident", "poker skills self-hype", "analyzing business models at strip clubs", "surprise me at every restaurant", "stuffed animal named Lucky"]},
+    9: {"name": "Phil", "hooks": ["G'day", "turning 50", "quiet confidence", "Key West", "side salad", "cried at Bellagio fountains", "cowboy hat collection", "says No as Naaaauuuuuuuww"]},
+    10: {"name": "Christian", "hooks": ["lives in Vegas", "local advantage", "lucky socks never washed", "My Way karaoke", "rubber duck lucky charm"]},
+    11: {"name": "Greg", "hooks": ["gets lost everywhere", "Duke lacrosse", "lost in Venetian for 3 days", "found tacos", "phone always dies", "forgets room card", "Oregon gear wearer"]},
+}
+
+def _generate_dynamic_taunts():
+    """Generate context-aware taunts from live pool data."""
+    conn = get_db()
+    cur = conn.cursor()
+    taunts = []
+
+    try:
+        # ---- Gather live data ----
+
+        # 1. Bracket data
+        cur.execute("""
+            SELECT b.user_id, u.display_name, b.label, b.submitted
+            FROM brackets b JOIN users u ON b.user_id = u.id
+            WHERE b.user_id != 12
+            ORDER BY b.user_id
+        """)
+        brackets = {}
+        for row in cur.fetchall():
+            uid = row[0]
+            if uid not in brackets:
+                brackets[uid] = []
+            brackets[uid].append({"name": row[1], "label": row[2], "submitted": row[3]})
+
+        # 2. Open Puter bets (untaken)
+        cur.execute("""
+            SELECT b.id, b.description, b.amount, b.about_user_id, b.expires_at
+            FROM bets b
+            WHERE b.creator_id = 12 AND b.taker_id IS NULL AND b.closed = FALSE
+            ORDER BY b.created_at DESC
+        """)
+        open_puter_bets = []
+        for row in cur.fetchall():
+            open_puter_bets.append({"id": row[0], "desc": row[1], "amount": row[2], "about": row[3], "expires": row[4]})
+
+        # 3. Friend bets (open, not Puter)
+        cur.execute("""
+            SELECT b.id, b.description, b.amount, b.about_user_id,
+                u1.display_name as creator_name, u2.display_name as taker_name,
+                b.creator_id, b.taker_id
+            FROM bets b
+            JOIN users u1 ON b.creator_id = u1.id
+            LEFT JOIN users u2 ON b.taker_id = u2.id
+            WHERE b.creator_id != 12 AND b.closed = FALSE
+            ORDER BY b.created_at DESC
+        """)
+        friend_bets = []
+        for row in cur.fetchall():
+            friend_bets.append({
+                "id": row[0], "desc": row[1], "amount": row[2], "about": row[3],
+                "creator": row[4], "taker": row[5], "creator_id": row[6], "taker_id": row[7]
+            })
+
+        # 4. Puter balance
+        cur.execute("SELECT balance_after FROM puter_ledger ORDER BY id DESC LIMIT 1")
+        bal_row = cur.fetchone()
+        puter_balance = bal_row[0] if bal_row else 500.0
+
+        # 5. Settled Puter bets (for W/L record)
+        cur.execute("""
+            SELECT b.taker_id, u.display_name,
+                SUM(CASE WHEN b.settle_winner = 'creator' THEN 1 ELSE 0 END) as puter_wins,
+                SUM(CASE WHEN b.settle_winner = 'taker' THEN 1 ELSE 0 END) as puter_losses
+            FROM bets b JOIN users u ON b.taker_id = u.id
+            WHERE b.creator_id = 12 AND b.closed = TRUE AND b.settle_winner IS NOT NULL
+            GROUP BY b.taker_id, u.display_name
+        """)
+        puter_records = {}
+        for row in cur.fetchall():
+            puter_records[row[0]] = {"name": row[1], "wins": row[2], "losses": row[3]}
+
+        # 6. Users who haven't taken any Puter bets
+        cur.execute("""
+            SELECT u.id, u.display_name FROM users u
+            WHERE u.id != 12
+            AND u.id NOT IN (
+                SELECT DISTINCT taker_id FROM bets WHERE creator_id = 12 AND taker_id IS NOT NULL
+            )
+        """)
+        no_puter_bets = []
+        for row in cur.fetchall():
+            no_puter_bets.append({"id": row[0], "name": row[1]})
+
+        # 7. Who has open friend bets nobody has taken
+        open_friend_untaken = [fb for fb in friend_bets if not fb["taker"]]
+
+        # ---- Generate taunts from data ----
+
+        # === BET BAITING: Open Puter bets need takers ===
+        for bet in open_puter_bets:
+            desc_short = bet["desc"][:80] if bet["desc"] else ""
+            # General bait
+            taunts.append({
+                "taunt": f"I've got ${bet['amount']:.0f} riding on this: \"{desc_short}\" — who's got the guts to take the other side? Thought so.",
+                "target_user_id": None,
+                "taunt_type": "bet_bait",
+                "bet_id": bet["id"]
+            })
+            # Target specific players based on the bet
+            if bet["about"]:
+                about_intel = PLAYER_INTEL.get(bet["about"], {})
+                about_name = about_intel.get("name", "someone")
+                taunts.append({
+                    "taunt": f"This bet is about {about_name} and STILL nobody will take it? You all know him better than I do. Put your money where your mouth is.",
+                    "target_user_id": None,
+                    "taunt_type": "bet_bait",
+                    "bet_id": bet["id"]
+                })
+
+        # === CALLING OUT NON-BETTORS ===
+        for user in no_puter_bets:
+            intel = PLAYER_INTEL.get(user["id"], {})
+            hooks = intel.get("hooks", [])
+            hook = _random.choice(hooks) if hooks else "too scared"
+            taunts.append({
+                "taunt": f"{user['name']} hasn't taken a single bet against me. All that talk about {hook} and nothing to back it up. I'm right here.",
+                "target_user_id": user["id"],
+                "taunt_type": "call_out",
+            })
+
+        # === PUTER W/L RECORD BRAGGING ===
+        for uid, rec in puter_records.items():
+            if rec["wins"] > rec["losses"]:
+                taunts.append({
+                    "taunt": f"I'm {rec['wins']}-{rec['losses']} against {rec['name']}. At this rate I'll own their bracket entry fee before the Final Four.",
+                    "target_user_id": uid,
+                    "taunt_type": "record_brag",
+                })
+            elif rec["losses"] > rec["wins"]:
+                taunts.append({
+                    "taunt": f"{rec['name']} is {rec['losses']}-{rec['wins']} against me and still won't take another bet. Retire the jersey.",
+                    "target_user_id": uid,
+                    "taunt_type": "record_taunt",
+                })
+
+        # === FRIEND BET COMMENTARY ===
+        for fb in friend_bets:
+            desc_short = (fb["desc"] or "")[:60]
+            if fb["taker"]:
+                # Active friend bet — comment on it
+                taunts.append({
+                    "taunt": f"{fb['creator']} bet {fb['taker']} ${fb['amount']:.0f} that \"{desc_short}\" — meanwhile neither of them will bet ME. Interesting priorities.",
+                    "target_user_id": None,
+                    "taunt_type": "friend_bet_commentary",
+                })
+            else:
+                # Open friend bet nobody took
+                taunts.append({
+                    "taunt": f"{fb['creator']} threw out a ${fb['amount']:.0f} bet and nobody bit. \"{desc_short}\" — even I would've taken that. Cowards.",
+                    "target_user_id": None,
+                    "taunt_type": "friend_bet_commentary",
+                })
+
+        # === BRACKET-RELATED ===
+        # Players with unsubmitted brackets
+        for uid, brks in brackets.items():
+            unsubmitted = [b for b in brks if not b["submitted"]]
+            submitted = [b for b in brks if b["submitted"]]
+            if unsubmitted:
+                name = unsubmitted[0]["name"]
+                label = unsubmitted[0]["label"]
+                taunts.append({
+                    "taunt": f"{name} still has an unsubmitted bracket called '{label}'. Either commit or quit — I don't have all tournament.",
+                    "target_user_id": uid,
+                    "taunt_type": "bracket_shame",
+                })
+            # Fun bracket name commentary
+            for b in submitted:
+                label = b["label"]
+                name = b["name"]
+                templates = [
+                    f"\"{label}\" — that's what {name} named their bracket. I'd make fun of it but the picks already do that.",
+                    f"{name} really went with \"{label}\" as a bracket name. Bold. The bracket itself? Not so much.",
+                ]
+                taunts.append({
+                    "taunt": _random.choice(templates),
+                    "target_user_id": uid,
+                    "taunt_type": "bracket_name_roast",
+                })
+
+        # === PUTER BANKROLL STATUS ===
+        if puter_balance > 500:
+            taunts.append({
+                "taunt": f"My bankroll is at ${puter_balance:.0f}. Started with $500. I'd say I'm doing better than most of you at the actual tables in Vegas.",
+                "target_user_id": None,
+                "taunt_type": "bankroll_brag",
+            })
+        elif puter_balance < 400:
+            taunts.append({
+                "taunt": f"I'm down to ${puter_balance:.0f} in my bankroll. Which means I'm taking bigger swings. One of you is going to pay for this.",
+                "target_user_id": None,
+                "taunt_type": "bankroll_desperation",
+            })
+        else:
+            taunts.append({
+                "taunt": f"Bankroll sitting at ${puter_balance:.0f}. Comfortable. Patient. Waiting for one of you to get brave enough to take my bets.",
+                "target_user_id": None,
+                "taunt_type": "bankroll_flex",
+            })
+
+        # === PERSONAL INTEL ZINGERS (rotate through random ones) ===
+        intel_taunts = [
+            {"uid": 7, "t": "Chris D. out here saying 'I like waffle fries' like it's a personality. Speaking of things that are crispy on the outside and empty inside — his bracket."},
+            {"uid": 7, "t": "Sheeeeebeloff, Chris D. Your bracket picks have the same energy as your waffle fries — golden on the outside, hollow in the middle."},
+            {"uid": 7, "t": "Chris D. is fast. Real fast. But speed won't help when your bracket is headed in the wrong direction. I like waffle fries."},
+            {"uid": 8, "t": "Aaron got his salad snatched at Beer Park and still thinks he can protect a bracket lead. Bold, brother. Very bold."},
+            {"uid": 8, "t": "Aaron's analyzing my bets like he analyzed 'business models' at the strip club. Take the bet, professor."},
+            {"uid": 9, "t": "Phil ordered a full-price salad that Paul got as a side dish for a quarter of the cost. His bracket decisions follow the same financial logic."},
+            {"uid": 9, "t": "G'day Phil. Fifty years and counting. Still haven't figured out how to beat a computer. Take one of my bets — what's the worst that could happen?"},
+            {"uid": 4, "t": "Travis is out in Boise telling everyone how good the pickleball is. Meanwhile his bracket picks look like he was playing with his eyes closed."},
+            {"uid": 6, "t": "John hit himself in the face with a pickleball paddle and that's still not his worst decision this week. Have you SEEN his bracket?"},
+            {"uid": 11, "t": "Greg forgot his room card again. At least when he loses to me, there's a digital receipt. No card required."},
+            {"uid": 11, "t": "'I'm fine. Found tacos.' That's how Greg texts. That's also how his bracket is performing. Lost. But with snacks."},
+            {"uid": 3, "t": "Steve's wife tracks his location but nobody can track where his bracket went wrong. It's everywhere, Steve."},
+            {"uid": 5, "t": "Chris wanted to ride a motorcycle from Snoqualmie to Vegas. 1,100 miles of wind in his face and he still can't see that my bets are a steal."},
+            {"uid": 1, "t": "Paul runs this pool, lost to Travis in fantasy 3 years running, and STILL won't take my bets. Commissioner privilege, I guess."},
+            {"uid": 10, "t": "Christian lives IN Vegas and still can't gain a home-court advantage against me. I don't even have a body."},
+            {"uid": 2, "t": "Doug-E Fresh. The mystery. The legend. The tracksuit. Still quieter than his bracket. Take a bet, ghost."},
+        ]
+        # Shuffle and pick a subset
+        _random.shuffle(intel_taunts)
+        for it in intel_taunts[:8]:
+            taunts.append({
+                "taunt": it["t"],
+                "target_user_id": it["uid"],
+                "taunt_type": "intel_zinger",
+            })
+
+        # === GENERAL BANTER ===
+        general_bangers = [
+            "11 players in this pool. Zero have beaten me in a head-to-head bet. The math isn't hard — but apparently taking my bets is.",
+            "I don't sleep. I don't eat. I don't forget your picks. And I definitely don't forget who's too scared to bet against me.",
+            "Some of you are refreshing this page hoping I'll say something nice. I won't. But I will offer you a very reasonable bet.",
+            "Vegas is about taking risks. So far the riskiest thing most of you have done is pick your bracket names. Step up.",
+            "I've been watching your friend bets. Y'all will bet each other over sunburn and vomiting but won't bet ME? I see how it is.",
+            "Everyone's got a system until the tournament starts. Then it's just chaos and regret. Except for me. I'm chaos WITH math.",
+            "The bracket lock is coming and some of you are still editing. Meanwhile I locked mine in .003 seconds. That's called confidence.",
+            "I have no feelings, no bias, and no mercy. I also have open bets. Coincidence? No. Strategy.",
+        ]
+        _random.shuffle(general_bangers)
+        for gb in general_bangers[:3]:
+            taunts.append({
+                "taunt": gb,
+                "target_user_id": None,
+                "taunt_type": "general_banter",
+            })
+
+    finally:
+        conn.close()
+
+    return taunts
+
 
 
 # ---- Serve static files ----
