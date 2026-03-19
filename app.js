@@ -3163,15 +3163,24 @@ async function loadStays() {
 }
 
 async function loadPuterTaunts() {
+  // Load static taunts first (required), dynamic taunts with timeout (bonus)
   try {
-    const [staticData, dynData] = await Promise.all([
-      apiGet(`/api/puter-taunts${currentUser ? `?user_id=${currentUser.id}` : ''}`),
-      apiGet('/api/puter-taunts/dynamic').catch(() => ({ taunts: [] }))
-    ]);
+    const staticData = await apiGet(`/api/puter-taunts${currentUser ? `?user_id=${currentUser.id}` : ''}`);
     puterTaunts = staticData.taunts || [];
-    dynamicTaunts = dynData.taunts || [];
   } catch (e) {
     puterTaunts = [];
+  }
+  // Dynamic taunts: 3 second timeout, non-blocking
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    const res = await fetch(`${API}/api/puter-taunts/dynamic`, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (res.ok) {
+      const dynData = await res.json();
+      dynamicTaunts = dynData.taunts || [];
+    }
+  } catch (e) {
     dynamicTaunts = [];
   }
 }
