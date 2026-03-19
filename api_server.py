@@ -2019,8 +2019,7 @@ def get_dynamic_taunts():
                 break
 
         # Add target names
-        conn = get_db()
-        cur = conn.cursor()
+        cur = get_cursor()
         for t in selected:
             if t.get("target_user_id"):
                 cur.execute("SELECT display_name FROM users WHERE id = %s", (t["target_user_id"],))
@@ -2030,7 +2029,7 @@ def get_dynamic_taunts():
                 t["target_name"] = None
             t["id"] = f"dyn-{_random.randint(10000,99999)}"
             t["responses"] = []
-        conn.close()
+        cur.close()
 
         return {"taunts": selected}
     except Exception as e:
@@ -2039,8 +2038,7 @@ def get_dynamic_taunts():
 
 @app.get("/api/puter-taunts")
 def get_puter_taunts(user_id: int = None, bet_id: int = None):
-    conn = get_db()
-    cur = conn.cursor()
+    cur = get_cursor()
     try:
         if bet_id:
             cur.execute("SELECT id, taunt, target_user_id, taunt_type, created_at FROM puter_taunts WHERE bet_id = %s AND active = true ORDER BY created_at DESC", (bet_id,))
@@ -2077,7 +2075,7 @@ def get_puter_taunts(user_id: int = None, bet_id: int = None):
 
         return {"taunts": taunts}
     finally:
-        conn.close()
+        cur.close()
 
 @app.post("/api/puter-taunts/{taunt_id}/respond")
 def respond_to_taunt(taunt_id: int, req: TauntResponseRequest):
@@ -2086,8 +2084,7 @@ def respond_to_taunt(taunt_id: int, req: TauntResponseRequest):
     if not req.response.strip():
         raise HTTPException(status_code=400, detail="Response cannot be empty")
 
-    conn = get_db()
-    cur = conn.cursor()
+    cur = get_cursor()
     try:
         cur.execute("SELECT id FROM puter_taunts WHERE id = %s AND active = true", (taunt_id,))
         if not cur.fetchone():
@@ -2103,16 +2100,16 @@ def respond_to_taunt(taunt_id: int, req: TauntResponseRequest):
             (taunt_id, req.user_id, req.response.strip())
         )
         result = cur.fetchone()
-        conn.commit()
+        db.commit()
 
         return {"ok": True, "response": {"id": result[0], "response": req.response.strip(), "created_at": str(result[1]), "user_name": user_row[0]}}
     except HTTPException:
         raise
     except Exception as e:
-        conn.rollback()
+        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        conn.close()
+        cur.close()
 
 
 # ---- Dynamic Puter Taunts (generated from live data) ----
@@ -2134,8 +2131,7 @@ PLAYER_INTEL = {
 
 def _generate_dynamic_taunts():
     """Generate context-aware taunts from live pool data."""
-    conn = get_db()
-    cur = conn.cursor()
+    cur = get_cursor()
     taunts = []
 
     try:
@@ -2404,7 +2400,7 @@ def _generate_dynamic_taunts():
             })
 
     finally:
-        conn.close()
+        cur.close()
 
     return taunts
 
