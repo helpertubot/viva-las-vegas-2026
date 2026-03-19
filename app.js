@@ -3100,9 +3100,10 @@ async function loadAllData() {
   allBrackets = brackets;
   betData = betsRes;
   config = cfg;
-  // Load tournament data and taunts in background (non-blocking)
+  // Load taunts as part of initial data so they're always visible
+  await loadPuterTaunts();
+  // Load tournament data in background (non-blocking)
   loadTournamentData();
-  loadPuterTaunts();
 }
 
 async function loadTournamentData() {
