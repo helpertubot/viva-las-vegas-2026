@@ -1532,7 +1532,8 @@ function renderPuterBetsSection() {
   const balance = puterData.balance || 0;
   const openBets = pb.filter(b => !b.closed && !b.taker_id);
   const activeBets = pb.filter(b => !b.closed && b.taker_id);
-  const settledBets = pb.filter(b => b.closed);
+  // Only show settled bets that were actually taken (not expired untaken ones)
+  const settledBets = pb.filter(b => b.closed && b.taker_id);
   const myActiveWithPuter = pb.find(b => b.taker_id === (currentUser ? currentUser.id : 0) && !b.closed);
   const isAdmin = currentUser && currentUser.is_admin;
   const pnl = balance - (puterData.initial_bankroll || 500);
@@ -1567,7 +1568,7 @@ function renderPuterBetsSection() {
           </li>
           <li><strong>Settling sports bets:</strong> Once the game is over, you can settle it yourself — just hit Puter Wins or your name Wins. Puter also auto-checks results every hour as a backup.</li>
           <li><strong>Settling prop bets:</strong> Only Paul can settle these, since they\'re judgment calls.</li>
-          <li><strong>Fresh bets every 2 hours:</strong> Puter rotates in new bets every 2 hours. If nobody takes a bet in time, it expires and gets replaced. There\'s always something to bet on.</li>
+          <li><strong>Fresh bets every hour:</strong> Puter rotates in new bets every hour. If nobody takes a bet before the game tips off, it expires and gets replaced. There\'s always something to bet on.</li>
           <li><strong>No ambiguity:</strong> Every bet is specific. Sports bets name both teams, seeds, round, and a clear outcome (e.g. "(7) Kentucky beats (2) Iowa St. in Round 1" not just "Kentucky wins"). Prop bets define exactly what counts and by when.</li>
           <li><strong>No lingering bets:</strong> Every bet resolves within a day or two.</li>
           <li><strong>Payouts:</strong> Paul settles all payouts via Venmo.</li>
@@ -1597,8 +1598,12 @@ function renderPuterBetsSection() {
 
       ${settledBets.length > 0 ? `
         <div class="puter-bet-group">
-          <div class="puter-group-label">Settled</div>
-          ${settledBets.map(b => renderPuterBetCard(b, myActiveWithPuter)).join('')}
+          <div class="puter-group-label" style="cursor:pointer;" onclick="const el=document.getElementById('puter-settled'); el.style.display = el.style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-arrow').textContent = el.style.display === 'none' ? '▸' : '▾';">
+            <span class="toggle-arrow">▸</span> Settled (${settledBets.length})
+          </div>
+          <div id="puter-settled" style="display:none;">
+            ${settledBets.map(b => renderPuterBetCard(b, myActiveWithPuter)).join('')}
+          </div>
         </div>
       ` : ''}
 
