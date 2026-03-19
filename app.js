@@ -1925,7 +1925,8 @@ async function unsettleBet(betId) {
 async function deletePuterBet(betId) {
   if (!confirm('Remove this Puter bet?')) return;
   try {
-    await apiPost(`/api/puter/bets/${betId}/close?viewer_id=${currentUser.id}`, {});
+    const res = await fetch(`${API}/api/bets/${betId}?viewer_id=${currentUser.id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error((await res.json()).detail || 'Failed to delete');
     await loadBets();
     render();
   } catch (err) {
