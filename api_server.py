@@ -2266,20 +2266,45 @@ def _generate_dynamic_taunts():
                     "taunt_type": "record_taunt",
                 })
 
-        # === FRIEND BET COMMENTARY ===
-        for fb in friend_bets:
-            desc_short = (fb["desc"] or "")[:60]
-            if fb["taker"]:
-                # Active friend bet — comment on it
+        # === FRIEND BET COMMENTARY (no spoilers — just counts/vibes) ===
+        bets_revealed = time.time() >= BET_REVEAL_TIMESTAMP
+        total_friend_bets = len(friend_bets)
+        taken_friend_bets = len([fb for fb in friend_bets if fb["taker"]])
+        open_friend_bets = total_friend_bets - taken_friend_bets
+
+        if bets_revealed:
+            # After reveal: can reference specifics
+            for fb in friend_bets[:4]:
+                desc_short = (fb["desc"] or "")[:60]
+                if fb["taker"]:
+                    taunts.append({
+                        "taunt": f"{fb['creator']} bet {fb['taker']} ${fb['amount']:.0f} that \"{desc_short}\" — meanwhile neither of them will bet ME. Interesting priorities.",
+                        "target_user_id": None,
+                        "taunt_type": "friend_bet_commentary",
+                    })
+                else:
+                    taunts.append({
+                        "taunt": f"{fb['creator']} threw out a ${fb['amount']:.0f} bet and nobody bit. \"{desc_short}\" — even I would've taken that. Cowards.",
+                        "target_user_id": None,
+                        "taunt_type": "friend_bet_commentary",
+                    })
+        else:
+            # Before reveal: vague taunts only, no spoilers
+            if total_friend_bets > 0:
                 taunts.append({
-                    "taunt": f"{fb['creator']} bet {fb['taker']} ${fb['amount']:.0f} that \"{desc_short}\" — meanwhile neither of them will bet ME. Interesting priorities.",
+                    "taunt": f"There are {total_friend_bets} friend bets floating around this pool and I can see ALL of them. Some of you should be nervous. Very nervous.",
                     "target_user_id": None,
                     "taunt_type": "friend_bet_commentary",
                 })
-            else:
-                # Open friend bet nobody took
+            if open_friend_bets > 3:
                 taunts.append({
-                    "taunt": f"{fb['creator']} threw out a ${fb['amount']:.0f} bet and nobody bit. \"{desc_short}\" — even I would've taken that. Cowards.",
+                    "taunt": f"{open_friend_bets} friend bets sitting out there with no takers. Y'all are quick to talk but slow to put money down. Sound familiar?",
+                    "target_user_id": None,
+                    "taunt_type": "friend_bet_commentary",
+                })
+            if taken_friend_bets > 0:
+                taunts.append({
+                    "taunt": f"Some of you are brave enough to bet your friends but won't take on a computer. I see {taken_friend_bets} active friend bets. I'm right here.",
                     "target_user_id": None,
                     "taunt_type": "friend_bet_commentary",
                 })
