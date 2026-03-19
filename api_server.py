@@ -2131,11 +2131,14 @@ PLAYER_INTEL = {
 }
 
 def _generate_dynamic_taunts():
-    """Generate context-aware taunts from live pool data. Uses shared DB connection."""
-    cur = get_cursor()
+    """Generate context-aware taunts from live pool data. Uses own connection to avoid blocking."""
+    conn = None
     taunts = []
 
     try:
+        conn = psycopg2.connect(DATABASE_URL, connect_timeout=5)
+        conn.autocommit = True
+        cur = conn.cursor()
         # ---- Gather live data ----
 
         # 1. Bracket data
@@ -2402,12 +2405,12 @@ def _generate_dynamic_taunts():
 
     except Exception as e:
         logger.error(f"Dynamic taunts generation error: {e}")
-        try:
-            db.rollback()
-        except Exception:
-            pass
     finally:
-        cur.close()
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     return taunts
 
