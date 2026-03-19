@@ -2362,18 +2362,8 @@ def _generate_dynamic_taunts():
                 })
 
         # === BRACKET-RELATED ===
-        # Players with unsubmitted brackets
         for uid, brks in brackets.items():
-            unsubmitted = [b for b in brks if not b["submitted"]]
             submitted = [b for b in brks if b["submitted"]]
-            if unsubmitted:
-                name = unsubmitted[0]["name"]
-                label = unsubmitted[0]["label"]
-                taunts.append({
-                    "taunt": f"{name} still has an unsubmitted bracket called '{label}'. Either commit or quit — I don't have all tournament.",
-                    "target_user_id": uid,
-                    "taunt_type": "bracket_shame",
-                })
             # Fun bracket name commentary
             for b in submitted:
                 label = b["label"]
