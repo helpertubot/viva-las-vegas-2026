@@ -2135,17 +2135,17 @@ def respond_to_taunt(taunt_id: int, req: TauntResponseRequest):
 
 # Player intel for personalized taunts
 PLAYER_INTEL = {
-    1: {"name": "Paul", "hooks": ["runs the pool", "Commissioner", "dead last in fantasy football 3 years running in a 12-team league", "from Yakima", "son went to Oregon", "In-N-Out superfan", "Vegas Command Center group chat"]},
-    2: {"name": "Doug-E Fresh", "hooks": ["mystery man", "nobody knows who he is", "silent assassin", "tracksuit legend", "showed up in Elvis jumpsuit"]},
-    3: {"name": "Steve", "hooks": ["banned from the trip", "watching from Snoqualmie", "WSU Coug fan", "kid goes to UW", "wife tracks his location", "lucky shirt since 2014"]},
-    4: {"name": "Travis", "hooks": ["pickleball obsessed", "from Boise", "fantasy football league commissioner", "wears a blazer to pool parties", "Legend of the Fiver roulette story", "full hat but still gets sunburnt"]},
-    5: {"name": "Chris", "hooks": ["motorcycle rider", "from Snoqualmie", "vibes-based strategy", "gift shop addict", "started a craps table chant"]},
-    6: {"name": "John", "hooks": ["Bears fan", "hit himself with his own pickleball paddle", "fanny pack vault", "explains fantasy football to strangers", "4 AM steak negotiator"]},
-    7: {"name": "Chris D.", "hooks": ["I like waffle fries", "Sheeeeebeloff", "fastest in the group", "Oregon State fan", "Hawaiian shirt collection", "wore sunglasses indoors", "coupon at a casino bar"]},
-    8: {"name": "Aaron", "hooks": ["golden retriever energy", "Beer Park salad incident", "poker skills self-hype", "analyzing business models at strip clubs", "surprise me at every restaurant", "stuffed animal named Lucky"]},
-    9: {"name": "Phil", "hooks": ["G'day", "turning 50", "quiet confidence", "Key West", "side salad", "cried at Bellagio fountains", "cowboy hat collection", "says No as Naaaauuuuuuuww"]},
-    10: {"name": "Christian", "hooks": ["lives in Vegas", "local advantage", "lucky socks never washed", "My Way karaoke", "rubber duck lucky charm"]},
-    11: {"name": "Greg", "hooks": ["gets lost everywhere", "Duke lacrosse", "lost in Venetian for 3 days", "found tacos", "phone always dies", "forgets room card", "Oregon gear wearer"]},
+    1: {"name": "Paul"},
+    2: {"name": "Doug-E Fresh"},
+    3: {"name": "Steve"},
+    4: {"name": "Travis"},
+    5: {"name": "Chris"},
+    6: {"name": "John"},
+    7: {"name": "Chris D."},
+    8: {"name": "Aaron"},
+    9: {"name": "Phil"},
+    10: {"name": "Christian"},
+    11: {"name": "Greg"},
 }
 
 def _generate_dynamic_taunts():
@@ -2259,12 +2259,17 @@ def _generate_dynamic_taunts():
                 })
 
         # === CALLING OUT NON-BETTORS ===
+        call_out_lines = [
+            "{name} hasn't taken a single bet against me. Big bracket energy, zero follow-through. I'm right here.",
+            "{name} filled out a bracket but won't back it up with a bet? Talk is cheap. My money's on the table.",
+            "{name} is ducking me like I'm a 1-seed. Take a bet or admit you're scared.",
+            "Still waiting on {name} to show some courage. Your bracket says you're confident — prove it.",
+            "{name} out here watching from the sidelines while everyone else puts money down. Must be nice.",
+        ]
         for user in no_puter_bets:
-            intel = PLAYER_INTEL.get(user["id"], {})
-            hooks = intel.get("hooks", [])
-            hook = _random.choice(hooks) if hooks else "too scared"
+            line = _random.choice(call_out_lines)
             taunts.append({
-                "taunt": f"{user['name']} hasn't taken a single bet against me. All that talk about {hook} and nothing to back it up. I'm right here.",
+                "taunt": line.format(name=user['name']),
                 "target_user_id": user["id"],
                 "taunt_type": "call_out",
             })
