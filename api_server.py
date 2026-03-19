@@ -2018,22 +2018,23 @@ def get_dynamic_taunts():
             if len(selected) >= 15:
                 break
 
-        # Add target names
-        cur = get_cursor()
+        # Add target names from PLAYER_INTEL (no DB call needed)
         for t in selected:
             if t.get("target_user_id"):
-                cur.execute("SELECT display_name FROM users WHERE id = %s", (t["target_user_id"],))
-                row = cur.fetchone()
-                t["target_name"] = row[0] if row else None
+                intel = PLAYER_INTEL.get(t["target_user_id"])
+                t["target_name"] = intel["name"] if intel else None
             else:
                 t["target_name"] = None
             t["id"] = f"dyn-{_random.randint(10000,99999)}"
             t["responses"] = []
-        cur.close()
 
         return {"taunts": selected}
     except Exception as e:
-        logger.error(f"Dynamic taunts error: {e}")
+        logger.error(f"Dynamic taunts error: {e}\n{traceback.format_exc()}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
         return {"taunts": []}
 
 @app.get("/api/puter-taunts")
@@ -2130,7 +2131,7 @@ PLAYER_INTEL = {
 }
 
 def _generate_dynamic_taunts():
-    """Generate context-aware taunts from live pool data."""
+    """Generate context-aware taunts from live pool data. Uses shared DB connection."""
     cur = get_cursor()
     taunts = []
 
@@ -2399,6 +2400,12 @@ def _generate_dynamic_taunts():
                 "taunt_type": "general_banter",
             })
 
+    except Exception as e:
+        logger.error(f"Dynamic taunts generation error: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
     finally:
         cur.close()
 
