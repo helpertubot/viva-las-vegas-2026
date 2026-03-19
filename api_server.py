@@ -22,7 +22,11 @@ from typing import Optional
 import psycopg2
 import psycopg2.extras
 import random as _random
-from pywebpush import webpush, WebPushException
+try:
+    from pywebpush import webpush, WebPushException
+except ImportError:
+    webpush = None
+    WebPushException = Exception
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, stream=sys.stdout,
