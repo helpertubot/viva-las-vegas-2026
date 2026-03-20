@@ -1572,23 +1572,31 @@ function renderLiveScores() {
         const stateClass = g.game_state === 'in' ? 'live-game-active' : g.game_state === 'final' ? 'live-game-final' : 'live-game-pre';
         let stateLabel = '';
         if (g.game_state === 'in') {
-          stateLabel = g.status_detail || 'LIVE';
+          stateLabel = `<span class="live-dot" style="margin-right:4px;"></span> ${g.status_detail || 'LIVE'}`;
         } else if (g.game_state === 'final') {
           stateLabel = 'FINAL';
         } else {
           stateLabel = formatGameTime(g.game_datetime) || g.round_name || 'TBD';
         }
+        const regionBadge = g.region ? `<span class="live-game-region-badge">${g.region}</span>` : '';
+        const t1Winner = g.game_state === 'final' && g.winner_name === g.team1_name;
+        const t2Winner = g.game_state === 'final' && g.winner_name === g.team2_name;
+        const t1Loser = g.game_state === 'final' && !t1Winner && g.winner_name;
+        const t2Loser = g.game_state === 'final' && !t2Winner && g.winner_name;
         html += `
           <div class="live-game-card ${stateClass}">
-            <div class="live-game-status">${stateLabel}</div>
+            <div class="live-game-status-bar">
+              <span>${stateLabel}</span>
+              ${regionBadge}
+            </div>
             <div class="live-game-teams">
-              <div class="live-team ${g.game_state === 'final' && g.winner_name === g.team1_name ? 'live-winner' : ''}">
-                <span class="live-seed">${g.team1_seed || ''}</span>
+              <div class="live-team ${t1Winner ? 'live-winner' : ''}${t1Loser ? ' live-loser' : ''}">
+                <span class="live-seed">${g.team1_seed || '?'}</span>
                 <span class="live-name">${g.team1_name}</span>
                 <span class="live-score-num">${g.game_state !== 'pre' ? g.team1_score : ''}</span>
               </div>
-              <div class="live-team ${g.game_state === 'final' && g.winner_name === g.team2_name ? 'live-winner' : ''}">
-                <span class="live-seed">${g.team2_seed || ''}</span>
+              <div class="live-team ${t2Winner ? 'live-winner' : ''}${t2Loser ? ' live-loser' : ''}">
+                <span class="live-seed">${g.team2_seed || '?'}</span>
                 <span class="live-name">${g.team2_name}</span>
                 <span class="live-score-num">${g.game_state !== 'pre' ? g.team2_score : ''}</span>
               </div>

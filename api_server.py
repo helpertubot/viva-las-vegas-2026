@@ -1730,7 +1730,14 @@ def parse_espn_games(data):
         status = comp.get("status", {}).get("type", {})
         state_desc = status.get("description", "Scheduled")
         completed = status.get("completed", False)
-        game_state = "final" if completed else ("in" if state_desc == "In Progress" else "pre")
+        # ESPN state_desc can be: "Scheduled", "In Progress", "Halftime", "End of Period", "Final", etc.
+        # Treat anything that's not scheduled and not completed as in-progress
+        if completed:
+            game_state = "final"
+        elif state_desc in ("Scheduled",) or (score1 == 0 and score2 == 0 and state_desc not in ("In Progress", "Halftime", "End of Period")):
+            game_state = "pre"
+        else:
+            game_state = "in"
 
         winner_name = ""
         winner_seed = 0
@@ -1870,7 +1877,7 @@ def get_tournament_schedule():
         try:
             cur = get_cursor()
             for g in all_games:
-                if g.get("game_state") in ("final", "in_progress") and g.get("game_key"):
+                if g.get("game_state") in ("final", "in", "in_progress") and g.get("game_key"):
                     cur.execute("""
                         UPDATE tournament_results SET
                             team1_name = %s, team1_seed = %s,
