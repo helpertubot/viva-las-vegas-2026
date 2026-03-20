@@ -1873,11 +1873,15 @@ def get_tournament_schedule():
                 if g.get("game_state") in ("final", "in_progress") and g.get("game_key"):
                     cur.execute("""
                         UPDATE tournament_results SET
+                            team1_name = %s, team1_seed = %s,
+                            team2_name = %s, team2_seed = %s,
                             team1_score = %s, team2_score = %s,
                             winner_name = %s, winner_seed = %s,
                             game_state = %s, updated_at = %s
                         WHERE game_key = %s AND (game_state != 'final' OR game_state IS NULL)
                     """, (
+                        g["team1_name"], g["team1_seed"],
+                        g["team2_name"], g["team2_seed"],
                         g["team1_score"], g["team2_score"],
                         g["winner_name"], g["winner_seed"],
                         g["game_state"], now, g["game_key"]
@@ -1899,6 +1903,43 @@ def get_tournament_schedule():
         return {"games": [], "fetched_at": now, "error": str(e)}
 
 
+def normalize_team_name(name):
+    """Normalize team name for comparison: strip periods, extra whitespace, handle slashes."""
+    if not name:
+        return ""
+    # Strip periods (Michigan St. -> Michigan St)
+    n = name.replace(".", "").strip()
+    # Normalize whitespace
+    n = " ".join(n.split())
+    # Handle play-in slash notation: "NC State/Texas" should match "Texas" or "NC State"
+    # We'll store both parts as aliases
+    return n
+
+
+def names_match(pick_name, result_name):
+    """Check if a bracket pick name matches a tournament result name."""
+    pn = normalize_team_name(pick_name)
+    rn = normalize_team_name(result_name)
+    if pn == rn:
+        return True
+    # Handle play-in slash notation: "NC State/Texas" matches "Texas" or "NC State"
+    if "/" in pn:
+        parts = [normalize_team_name(p) for p in pn.split("/")]
+        if rn in parts:
+            return True
+    if "/" in rn:
+        parts = [normalize_team_name(p) for p in rn.split("/")]
+        if pn in parts:
+            return True
+    # Handle common abbreviation differences
+    # e.g., "Hawai'i" vs "Hawaii", "N Dakota St" vs "N Dakota St"
+    pn_clean = pn.replace("'", "").replace("\u2018", "").replace("\u2019", "")
+    rn_clean = rn.replace("'", "").replace("\u2018", "").replace("\u2019", "")
+    if pn_clean == rn_clean:
+        return True
+    return False
+
+
 def score_bracket(picks, all_results):
     """Score a bracket's picks against tournament results.
 
@@ -1917,22 +1958,22 @@ def score_bracket(picks, all_results):
     pending_picks = []
 
     # Precompute lookups from results
-    # winners_by_round[round_num] = set of winner names
+    # winners_by_round[round_num] = list of winner names
     winners_by_round = {}
-    # losers_by_round[round_num] = set of team names that played but lost
+    # losers_by_round[round_num] = list of team names that played but lost
     losers_by_round = {}
     for r in all_results:
         rn = r["round"]
         if rn not in winners_by_round:
-            winners_by_round[rn] = set()
-            losers_by_round[rn] = set()
+            winners_by_round[rn] = []
+            losers_by_round[rn] = []
         if r["winner_name"]:
-            winners_by_round[rn].add(r["winner_name"])
+            winners_by_round[rn].append(r["winner_name"])
             # The loser is whichever team is not the winner
             if r["team1_name"] != r["winner_name"]:
-                losers_by_round[rn].add(r["team1_name"])
+                losers_by_round[rn].append(r["team1_name"])
             if r["team2_name"] != r["winner_name"]:
-                losers_by_round[rn].add(r["team2_name"])
+                losers_by_round[rn].append(r["team2_name"])
 
     for key, pick_str in picks.items():
         if not pick_str:
@@ -1956,14 +1997,14 @@ def score_bracket(picks, all_results):
             continue
 
         pts = ROUND_POINTS.get(scoring_round, 0)
-        round_winners = winners_by_round.get(scoring_round, set())
-        round_losers = losers_by_round.get(scoring_round, set())
+        round_winners = winners_by_round.get(scoring_round, [])
+        round_losers = losers_by_round.get(scoring_round, [])
 
-        if picked_name in round_winners:
+        if any(names_match(picked_name, w) for w in round_winners):
             total += pts
             round_scores[scoring_round] += pts
             correct_picks.append(key)
-        elif picked_name in round_losers:
+        elif any(names_match(picked_name, l) for l in round_losers):
             wrong_picks.append(key)
         else:
             pending_picks.append(key)
