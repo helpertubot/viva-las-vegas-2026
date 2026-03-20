@@ -77,10 +77,11 @@ let puterData = { bets: [], balance: 500, initial_bankroll: 500, ledger: [] };
 let puterPayouts = { payouts: [], puter_balance: 500, initial_bankroll: 500 };
 let settleUpData = { debts: [], friend_settled: [], friend_settled_count: 0, puter_settled_count: 0 };
 let combinedStandings = { standings: [], puter_balance: 500, puter_initial: 500 };
-let lbTab = 'brackets'; // brackets | bets | puter
+let lbTab = 'brackets'; // brackets | bets | puter | family
 const PUTER_USER_ID = 12;
 let config = { entry_fee: 50, max_bets_per_user: 3, bet_reveal_timestamp: 0 };
 let leaderboardData = { leaderboard: [], championship_combined: null, games_completed: 0 };
+let familyLeaderboardData = { leaderboard: [], championship_combined: null, games_completed: 0 };
 let tournamentResults = { results: [] };
 let liveSchedule = { games: [] };
 let allStays = [];
@@ -414,6 +415,7 @@ function renderCurrentView() {
     case "games": return renderGamesPage();
     case "bracket": return renderMyBracketsPage();
     case "view-bracket": return renderBracketPage(viewingBracketId, true);
+    case "view-family-bracket": return renderFamilyBracketPage(viewingBracketId);
     case "bets": return renderBetsPage();
     case "leaderboard": return renderLeaderboardPage();
     case "trip": return renderTripPage();
@@ -964,12 +966,14 @@ function renderLeaderboardPage() {
 
     <div class="lb-tabs" style="display:flex; gap:2px; border-bottom:2px solid var(--navy-200); margin-bottom:16px; overflow-x:auto; -webkit-overflow-scrolling:touch;">
       <button style="${tabStyle('brackets')}" onclick="switchLbTab('brackets')">\u{1F3C0} Brackets</button>
+      <button style="${tabStyle('family')}" onclick="switchLbTab('family')">\u{1F3E0} Family</button>
       <button style="${tabStyle('bets')}" onclick="switchLbTab('bets')">\u{1F91D} Friend Bets</button>
       <button style="${tabStyle('puter')}" onclick="switchLbTab('puter')">\u{1F916} vs Puter</button>
       <button style="${tabStyle('overall')}" onclick="switchLbTab('overall')">\u{1F3C6} Overall</button>
     </div>
 
     ${lbTab === 'brackets' ? renderBracketsLeaderboard() : ''}
+    ${lbTab === 'family' ? renderFamilyLeaderboard() : ''}
     ${lbTab === 'bets' ? renderFriendBetsLeaderboard() : ''}
     ${lbTab === 'puter' ? renderPuterLeaderboard() : ''}
     ${lbTab === 'overall' ? renderOverallLeaderboard() : ''}
@@ -1059,6 +1063,145 @@ function renderBracketsLeaderboard() {
           }).join("")}
         </tbody>
       </table>
+    </div>
+  `;
+}
+
+function renderFamilyLeaderboard() {
+  const entries = familyLeaderboardData.leaderboard || [];
+  const champCombined = familyLeaderboardData.championship_combined;
+  const gamesCompleted = familyLeaderboardData.games_completed || 0;
+
+  const scoringCard = `
+    <div class="scoring-card">
+      <h3>Family Bracket Scoring</h3>
+      <div class="scoring-grid">
+        <div class="scoring-item"><span class="scoring-round">Round of 64</span><span class="scoring-pts">10 pts</span></div>
+        <div class="scoring-item"><span class="scoring-round">Round of 32</span><span class="scoring-pts">20 pts</span></div>
+        <div class="scoring-item"><span class="scoring-round">Sweet 16</span><span class="scoring-pts">40 pts</span></div>
+        <div class="scoring-item"><span class="scoring-round">Elite 8</span><span class="scoring-pts">80 pts</span></div>
+        <div class="scoring-item"><span class="scoring-round">Final Four</span><span class="scoring-pts">160 pts</span></div>
+        <div class="scoring-item"><span class="scoring-round">Championship</span><span class="scoring-pts">320 pts</span></div>
+      </div>
+    </div>`;
+
+  const infoBar = `
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
+      <span style="font-size:13px; color:var(--text-muted);">${gamesCompleted} games completed</span>
+      ${champCombined !== null ? `<span style="font-size:13px; color:var(--text-muted);">Championship total: ${champCombined}</span>` : ''}
+      <button class="btn-secondary" onclick="refreshFamilyLeaderboard()" style="margin-left:auto; font-size:12px; padding:6px 12px;">Refresh</button>
+    </div>`;
+
+  if (entries.length === 0) {
+    return scoringCard + infoBar + '<div class="empty-state">No family brackets submitted yet, or tournament hasn\'t started.</div>';
+  }
+
+  if (isMobile()) {
+    return scoringCard + infoBar + `
+      <div class="lb-cards">
+        ${entries.map((e, i) => {
+          const initials = (e.member_name||'').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+          const tbText = e.tiebreaker !== null && e.tiebreaker !== undefined ? e.tiebreaker : '-';
+          const tbDiff = e.tiebreaker_diff !== null && e.tiebreaker_diff !== undefined ? ` (${e.tiebreaker_diff > 0 ? '+' : ''}${e.tiebreaker_diff})` : '';
+          const correctCount = (e.correct_picks || []).length;
+          const wrongCount = (e.wrong_picks || []).length;
+          return `
+            <div class="lb-card" onclick="viewFamilyBracket(${e.bracket_id})">
+              <div class="lb-card-rank">${e.rank}</div>
+              <div class="lb-card-avatar">${initials}</div>
+              <div class="lb-card-info">
+                <div class="lb-card-name">${escapeHtml(e.member_name)}</div>
+                <div class="lb-card-sub">${correctCount}\u2713 ${wrongCount}\u2717 &middot; TB: ${tbText}${tbDiff}</div>
+              </div>
+              <div class="lb-card-value">${e.score}<span class="lb-card-unit">pts</span></div>
+            </div>`;
+        }).join('')}
+      </div>`;
+  }
+
+  return scoringCard + infoBar + `
+    <div class="leaderboard-table-wrap">
+      <table class="leaderboard-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th>Score</th>
+            <th>Correct</th>
+            <th>Wrong</th>
+            <th>TB</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${entries.map((e, i) => {
+            const correctCount = (e.correct_picks || []).length;
+            const wrongCount = (e.wrong_picks || []).length;
+            return `
+              <tr onclick="viewFamilyBracket(${e.bracket_id})" style="cursor:pointer;">
+                <td class="lb-rank">${e.rank}</td>
+                <td class="lb-name">
+                  <div class="lb-avatar" style="width:28px;height:28px;border-radius:50%;background:var(--navy-100);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--navy-700);overflow:hidden;vertical-align:middle;margin-right:8px;">${(e.member_name||'').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}</div>
+                  ${escapeHtml(e.member_name)}
+                </td>
+                <td class="lb-score">${e.score}</td>
+                <td>${correctCount}</td>
+                <td>${wrongCount}</td>
+                <td class="lb-tb">${e.tiebreaker !== null && e.tiebreaker !== undefined ? e.tiebreaker : '-'}${e.tiebreaker_diff !== null && e.tiebreaker_diff !== undefined ? ` <span style="font-size:11px;color:var(--text-faint);">(${e.tiebreaker_diff > 0 ? '+' : ''}${e.tiebreaker_diff})</span>` : ''}</td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+let familyBracketDetail = null;
+
+function viewFamilyBracket(bracketId) {
+  currentView = 'view-family-bracket';
+  viewingBracketId = bracketId;
+  familyBracketDetail = null;
+  render();
+  window.scrollTo(0, 0);
+  apiGet(`/api/family/brackets/${bracketId}`).then(data => {
+    familyBracketDetail = data;
+    render();
+  });
+}
+
+function renderFamilyBracketPage(bracketId) {
+  if (!familyBracketDetail) return `<div class="empty-state">Loading bracket...</div>`;
+  const picks = familyBracketDetail.picks || {};
+  const memberName = familyBracketDetail.member_name;
+
+  // Get scoring info from family leaderboard
+  const lbEntry = (familyLeaderboardData.leaderboard || []).find(e => e.bracket_id === bracketId);
+  const pickStatus = {};
+  if (lbEntry) {
+    (lbEntry.correct_picks || []).forEach(k => pickStatus[k] = 'correct');
+    (lbEntry.wrong_picks || []).forEach(k => pickStatus[k] = 'wrong');
+    (lbEntry.pending_picks || []).forEach(k => pickStatus[k] = 'pending');
+  }
+
+  return `
+    <button class="btn-back" onclick="switchLbTab('family'); navigate('leaderboard');">\u2190 Back to Family Leaderboard</button>
+    <div class="bracket-header">
+      <h2>${escapeHtml(memberName)}'s Bracket</h2>
+      <div class="bracket-actions">
+        <span class="locked-badge">\uD83D\uDD12 Locked</span>
+        ${lbEntry ? `<span style="font-size:14px;font-weight:700;color:var(--navy-700);">${lbEntry.score} pts</span>` : ''}
+      </div>
+    </div>
+    ${familyBracketDetail.tiebreaker !== null && familyBracketDetail.tiebreaker !== undefined ? `<div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Tiebreaker: ${familyBracketDetail.tiebreaker}</div>` : ''}
+    <div class="region-tabs">
+      ${REGIONS.map(r => `
+        <button class="${currentRegion === r ? 'active' : ''}" onclick="switchRegion('${r}')">${r}</button>
+      `).join("")}
+      <button class="${currentRegion === 'Final Four' ? 'active' : ''}" onclick="switchRegion('Final Four')">Final Four</button>
+    </div>
+    <div id="bracket-container">
+      ${currentRegion === 'Final Four' ? renderFinalFour(picks, true, pickStatus) : renderRegion(currentRegion, picks, true, pickStatus)}
     </div>
   `;
 }
@@ -2732,7 +2875,7 @@ function navigate(view) {
     if (view === 'home') loadPuterTaunts().then(() => render());
   }
   if (view === 'leaderboard') {
-    Promise.all([loadTournamentData(), loadCombinedStandings()]).then(() => render());
+    Promise.all([loadTournamentData(), loadCombinedStandings(), loadFamilyLeaderboard()]).then(() => render());
   }
   if (view === 'trip' || view === 'profile') {
     loadStays().then(() => render());
@@ -3226,6 +3369,19 @@ async function loadCombinedStandings() {
   } catch(e) {
     combinedStandings = { standings: [], puter_balance: 500, puter_initial: 500 };
   }
+}
+
+async function loadFamilyLeaderboard() {
+  try {
+    familyLeaderboardData = await apiGet('/api/family/leaderboard');
+  } catch(e) {
+    familyLeaderboardData = { leaderboard: [], championship_combined: null, games_completed: 0 };
+  }
+}
+
+async function refreshFamilyLeaderboard() {
+  await loadFamilyLeaderboard();
+  render();
 }
 
 async function loadLiveSchedule() {

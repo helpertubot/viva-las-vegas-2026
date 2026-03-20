@@ -2041,6 +2041,118 @@ def get_leaderboard():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ---- Family Bracket ----
+
+@app.get("/api/family/leaderboard")
+def family_leaderboard():
+    """Score all family brackets and return ranked leaderboard."""
+    try:
+        cur = get_cursor()
+
+        # First, sync family_tournament_results from main tournament_results
+        cur.execute("""
+            UPDATE family_tournament_results f
+            SET team1_score = t.team1_score, team2_score = t.team2_score,
+                winner_name = t.winner_name, winner_seed = t.winner_seed,
+                game_state = t.game_state, updated_at = t.updated_at
+            FROM tournament_results t
+            WHERE f.game_key = t.game_key AND t.game_state = 'final' AND f.game_state != 'final'
+        """)
+        get_conn().commit()
+
+        # Get all submitted family brackets
+        cur.execute("""
+            SELECT id, member_name, picks, tiebreaker
+            FROM family_brackets
+            WHERE submitted = TRUE
+            ORDER BY member_name
+        """)
+        brackets = fetchall_dict(cur)
+
+        # Get family tournament results (now synced)
+        cur.execute("SELECT * FROM family_tournament_results WHERE game_state = 'final'")
+        results = fetchall_dict(cur)
+        cur.close()
+
+        # Get championship combined score for tiebreaker
+        champ_combined = None
+        for r in results:
+            if r["round"] == 6 and r["game_state"] == "final":
+                champ_combined = (r["team1_score"] or 0) + (r["team2_score"] or 0)
+                break
+
+        entries = []
+        for b in brackets:
+            picks = json.loads(b["picks"]) if b["picks"] else {}
+            scored = score_bracket(picks, results)
+            tb = b["tiebreaker"]
+            tb_diff = abs(tb - champ_combined) if (tb is not None and champ_combined is not None) else None
+            entries.append({
+                "bracket_id": b["id"],
+                "member_name": b["member_name"],
+                "score": scored["total"],
+                "round_scores": scored["round_scores"],
+                "tiebreaker": tb,
+                "tiebreaker_diff": tb_diff,
+                "correct_picks": scored["correct_picks"],
+                "wrong_picks": scored["wrong_picks"],
+                "pending_picks": scored["pending_picks"],
+            })
+
+        entries.sort(key=lambda e: (-e["score"], e["tiebreaker_diff"] if e["tiebreaker_diff"] is not None else 99999))
+        for i, e in enumerate(entries):
+            e["rank"] = i + 1
+
+        return {
+            "leaderboard": entries,
+            "championship_combined": champ_combined,
+            "games_completed": len(results),
+        }
+    except Exception as e:
+        logger.error(f"FAMILY LEADERBOARD ERROR: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/family/brackets/{bracket_id}")
+def get_family_bracket(bracket_id: int):
+    """Get a single family bracket's picks."""
+    cur = get_cursor()
+    cur.execute("SELECT id, member_name, picks, tiebreaker FROM family_brackets WHERE id = %s", (bracket_id,))
+    row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Bracket not found")
+    cols = [desc[0] for desc in cur.description]
+    b = dict(zip(cols, row))
+    cur.close()
+    return {
+        "bracket_id": b["id"],
+        "member_name": b["member_name"],
+        "picks": json.loads(b["picks"]) if b["picks"] else {},
+        "tiebreaker": b["tiebreaker"],
+    }
+
+
+@app.get("/api/family/results")
+def get_family_results():
+    """Get family tournament results (synced from main)."""
+    cur = get_cursor()
+    # Sync first
+    cur.execute("""
+        UPDATE family_tournament_results f
+        SET team1_score = t.team1_score, team2_score = t.team2_score,
+            winner_name = t.winner_name, winner_seed = t.winner_seed,
+            game_state = t.game_state, updated_at = t.updated_at
+        FROM tournament_results t
+        WHERE f.game_key = t.game_key AND t.game_state = 'final' AND f.game_state != 'final'
+    """)
+    get_conn().commit()
+    cur.execute("SELECT * FROM family_tournament_results ORDER BY game_date, game_key")
+    results = fetchall_dict(cur)
+    cur.close()
+    return {"results": results}
+
+
 # ---- Puter Trash Talk ----
 class TauntResponseRequest(BaseModel):
     user_id: int
