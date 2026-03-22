@@ -77,7 +77,7 @@ let puterData = { bets: [], balance: 500, initial_bankroll: 500, ledger: [] };
 let puterPayouts = { payouts: [], puter_balance: 500, initial_bankroll: 500 };
 let settleUpData = { debts: [], friend_settled: [], friend_settled_count: 0, puter_settled_count: 0 };
 let combinedStandings = { standings: [], puter_balance: 500, puter_initial: 500 };
-let lbTab = 'brackets'; // brackets | bets | puter | family
+let lbTab = 'brackets'; // brackets | bets | puter | overall
 const PUTER_USER_ID = 12;
 let config = { entry_fee: 50, max_bets_per_user: 3, bet_reveal_timestamp: 0 };
 let leaderboardData = { leaderboard: [], championship_combined: null, games_completed: 0 };
@@ -415,7 +415,6 @@ function renderCurrentView() {
     case "games": return renderGamesPage();
     case "bracket": return renderMyBracketsPage();
     case "view-bracket": return renderBracketPage(viewingBracketId, true);
-    case "view-family-bracket": return renderFamilyBracketPage(viewingBracketId);
     case "bets": return renderBetsPage();
     case "leaderboard": return renderLeaderboardPage();
     case "trip": return renderTripPage();
@@ -802,6 +801,7 @@ function renderBracketPage(bracketId, readOnly) {
 function renderRegion(region, picks, locked, pickStatus) {
   const teams = BRACKET_DATA[region].teams;
   const rounds = 4;
+  const eliminatedTeams = getEliminatedTeams();
 
   // Round headers
   let html = `<div class="bracket-round-headers">`;
@@ -829,8 +829,8 @@ function renderRegion(region, picks, locked, pickStatus) {
       html += `
         <div class="matchup-wrapper" style="grid-column:${col}; grid-row:${rowStart}/${rowEnd};">
           <div class="matchup-pair">
-            ${renderTeamSlot(team1, matchKey, selected, locked, pickSt)}
-            ${renderTeamSlot(team2, matchKey, selected, locked, pickSt)}
+            ${renderTeamSlot(team1, matchKey, selected, locked, pickSt, eliminatedTeams)}
+            ${renderTeamSlot(team2, matchKey, selected, locked, pickSt, eliminatedTeams)}
           </div>
         </div>
       `;
@@ -867,12 +867,25 @@ function parseTeamStr(str) {
   return { seed: 0, name: str };
 }
 
+// Build set of eliminated team names from tournament results
+function getEliminatedTeams() {
+  const eliminated = new Set();
+  const results = (tournamentResults && tournamentResults.results) || [];
+  for (const g of results) {
+    if (g.game_state === 'final' && g.winner_name) {
+      const loser = g.winner_name === g.team1_name ? g.team2_name : g.team1_name;
+      if (loser) eliminated.add(loser.toLowerCase());
+    }
+  }
+  return eliminated;
+}
+
 function teamStr(team) {
   if (!team) return "";
   return `${team.seed} ${team.name}`;
 }
 
-function renderTeamSlot(team, matchKey, selected, locked, pickSt) {
+function renderTeamSlot(team, matchKey, selected, locked, pickSt, eliminatedTeams) {
   if (!team) {
     return `<div class="team-slot empty ${locked ? 'locked' : ''}"><span class="seed">-</span><span class="team-name">TBD</span></div>`;
   }
@@ -884,8 +897,10 @@ function renderTeamSlot(team, matchKey, selected, locked, pickSt) {
   if (isSelected && pickSt) {
     statusClass = pickSt === 'correct' ? 'pick-correct' : pickSt === 'wrong' ? 'pick-wrong' : '';
   }
+  // Check if this team has been eliminated from the tournament
+  const isEliminated = eliminatedTeams && team.name && eliminatedTeams.has(team.name.toLowerCase());
   return `
-    <div class="team-slot ${isSelected ? 'selected' : ''} ${locked ? 'locked' : ''} ${statusClass}" ${clickHandler}>
+    <div class="team-slot ${isSelected ? 'selected' : ''} ${locked ? 'locked' : ''} ${statusClass} ${isEliminated ? 'team-eliminated' : ''}" ${clickHandler}>
       <span class="seed">${team.seed}</span>
       <span class="team-name">${team.name}</span>
       ${isSelected && !statusClass ? '<span class="pick-dot"></span>' : ''}
@@ -909,6 +924,8 @@ function renderFinalFour(picks, locked, pickStatus) {
   const sf1Winner = parseTeamStr(sf1Pick);
   const sf2Winner = parseTeamStr(sf2Pick);
   const champion = parseTeamStr(champPick);
+  const eliminatedTeams = getEliminatedTeams();
+  const champEliminated = champion && champion.name && eliminatedTeams.has(champion.name.toLowerCase());
 
   return `
     <div class="ff-container">
@@ -917,20 +934,20 @@ function renderFinalFour(picks, locked, pickStatus) {
           <div class="ff-label">Semifinal 1</div>
           <div class="ff-sub">East vs South</div>
           <div class="matchup-pair ff-matchup">
-            ${renderTeamSlot(parseTeamStr(e8East), sf1Key, sf1Pick, locked, pickStatus ? pickStatus[sf1Key] : null)}
-            ${renderTeamSlot(parseTeamStr(e8South), sf1Key, sf1Pick, locked, pickStatus ? pickStatus[sf1Key] : null)}
+            ${renderTeamSlot(parseTeamStr(e8East), sf1Key, sf1Pick, locked, pickStatus ? pickStatus[sf1Key] : null, eliminatedTeams)}
+            ${renderTeamSlot(parseTeamStr(e8South), sf1Key, sf1Pick, locked, pickStatus ? pickStatus[sf1Key] : null, eliminatedTeams)}
           </div>
         </div>
 
         <div class="ff-championship">
           <div class="ff-label">Championship</div>
           <div class="matchup-pair ff-matchup champ-matchup">
-            ${renderTeamSlot(sf1Winner, champKey, champPick, locked, pickStatus ? pickStatus[champKey] : null)}
-            ${renderTeamSlot(sf2Winner, champKey, champPick, locked, pickStatus ? pickStatus[champKey] : null)}
+            ${renderTeamSlot(sf1Winner, champKey, champPick, locked, pickStatus ? pickStatus[champKey] : null, eliminatedTeams)}
+            ${renderTeamSlot(sf2Winner, champKey, champPick, locked, pickStatus ? pickStatus[champKey] : null, eliminatedTeams)}
           </div>
-          <div class="ff-champion-box ${champion ? '' : 'empty'}">
+          <div class="ff-champion-box ${champion ? '' : 'empty'} ${champEliminated ? 'champ-eliminated' : ''}">
             <div class="ff-champion-label">🏆 Champion</div>
-            <div class="ff-champion-name">${champion ? champion.name : 'TBD'}</div>
+            <div class="ff-champion-name ${champEliminated ? 'team-name-eliminated' : ''}">${champion ? champion.name : 'TBD'}</div>
           </div>
         </div>
 
@@ -938,8 +955,8 @@ function renderFinalFour(picks, locked, pickStatus) {
           <div class="ff-label">Semifinal 2</div>
           <div class="ff-sub">West vs Midwest</div>
           <div class="matchup-pair ff-matchup">
-            ${renderTeamSlot(parseTeamStr(e8West), sf2Key, sf2Pick, locked, pickStatus ? pickStatus[sf2Key] : null)}
-            ${renderTeamSlot(parseTeamStr(e8Midwest), sf2Key, sf2Pick, locked, pickStatus ? pickStatus[sf2Key] : null)}
+            ${renderTeamSlot(parseTeamStr(e8West), sf2Key, sf2Pick, locked, pickStatus ? pickStatus[sf2Key] : null, eliminatedTeams)}
+            ${renderTeamSlot(parseTeamStr(e8Midwest), sf2Key, sf2Pick, locked, pickStatus ? pickStatus[sf2Key] : null, eliminatedTeams)}
           </div>
         </div>
       </div>
@@ -966,14 +983,12 @@ function renderLeaderboardPage() {
 
     <div class="lb-tabs" style="display:flex; gap:2px; border-bottom:2px solid var(--navy-200); margin-bottom:16px; overflow-x:auto; -webkit-overflow-scrolling:touch;">
       <button style="${tabStyle('brackets')}" onclick="switchLbTab('brackets')">\u{1F3C0} Brackets</button>
-      <button style="${tabStyle('family')}" onclick="switchLbTab('family')">\u{1F3E0} Family</button>
       <button style="${tabStyle('bets')}" onclick="switchLbTab('bets')">\u{1F91D} Friend Bets</button>
       <button style="${tabStyle('puter')}" onclick="switchLbTab('puter')">\u{1F916} vs Puter</button>
       <button style="${tabStyle('overall')}" onclick="switchLbTab('overall')">\u{1F3C6} Overall</button>
     </div>
 
     ${lbTab === 'brackets' ? renderBracketsLeaderboard() : ''}
-    ${lbTab === 'family' ? renderFamilyLeaderboard() : ''}
     ${lbTab === 'bets' ? renderFriendBetsLeaderboard() : ''}
     ${lbTab === 'puter' ? renderPuterLeaderboard() : ''}
     ${lbTab === 'overall' ? renderOverallLeaderboard() : ''}

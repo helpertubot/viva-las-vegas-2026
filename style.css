@@ -2421,6 +2421,39 @@ img { display: block; max-width: 100%; }
   flex-shrink: 0;
 }
 
+/* === ELIMINATED TEAMS === */
+.team-slot.team-eliminated {
+  opacity: 0.5;
+}
+
+.team-slot.team-eliminated .team-name {
+  text-decoration: line-through;
+  text-decoration-color: var(--red-400);
+  text-decoration-thickness: 2px;
+}
+
+.team-slot.team-eliminated .seed {
+  opacity: 0.6;
+}
+
+/* Don't dim if already marked correct (they won this specific round) */
+.team-slot.pick-correct.team-eliminated {
+  opacity: 1;
+}
+.team-slot.pick-correct.team-eliminated .team-name {
+  text-decoration: none;
+}
+
+/* Champion box eliminated style */
+.ff-champion-box.champ-eliminated {
+  opacity: 0.5;
+}
+.team-name-eliminated {
+  text-decoration: line-through;
+  text-decoration-color: var(--red-400);
+  text-decoration-thickness: 2px;
+}
+
 /* === TIEBREAKER === */
 .tiebreaker-row {
   display: flex;
