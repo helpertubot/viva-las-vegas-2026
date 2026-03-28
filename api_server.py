@@ -2118,7 +2118,7 @@ def family_leaderboard():
             FROM tournament_results t
             WHERE f.game_key = t.game_key AND t.game_state = 'final' AND f.game_state != 'final'
         """)
-        get_conn().commit()
+        db.commit()
 
         # Get all submitted family brackets
         cur.execute("""
@@ -2207,7 +2207,7 @@ def get_family_results():
         FROM tournament_results t
         WHERE f.game_key = t.game_key AND t.game_state = 'final' AND f.game_state != 'final'
     """)
-    get_conn().commit()
+    db.commit()
     cur.execute("SELECT * FROM family_tournament_results ORDER BY game_date, game_key")
     results = fetchall_dict(cur)
     cur.close()
