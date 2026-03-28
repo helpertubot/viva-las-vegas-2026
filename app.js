@@ -867,14 +867,20 @@ function parseTeamStr(str) {
   return { seed: 0, name: str };
 }
 
-// Build set of eliminated team names from tournament results
+// Normalize team name for matching: strip periods, smart quotes, extra whitespace
+function normalizeTeamName(name) {
+  if (!name) return '';
+  return name.replace(/\./g, '').replace(/[\u2018\u2019']/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+// Build set of eliminated team names from tournament results (normalized)
 function getEliminatedTeams() {
   const eliminated = new Set();
   const results = (tournamentResults && tournamentResults.results) || [];
   for (const g of results) {
     if (g.game_state === 'final' && g.winner_name) {
       const loser = g.winner_name === g.team1_name ? g.team2_name : g.team1_name;
-      if (loser) eliminated.add(loser.toLowerCase());
+      if (loser) eliminated.add(normalizeTeamName(loser));
     }
   }
   return eliminated;
@@ -897,8 +903,8 @@ function renderTeamSlot(team, matchKey, selected, locked, pickSt, eliminatedTeam
   if (isSelected && pickSt) {
     statusClass = pickSt === 'correct' ? 'pick-correct' : pickSt === 'wrong' ? 'pick-wrong' : '';
   }
-  // Check if this team has been eliminated from the tournament
-  const isEliminated = eliminatedTeams && team.name && eliminatedTeams.has(team.name.toLowerCase());
+  // Check if this team has been eliminated from the tournament (using normalized name matching)
+  const isEliminated = eliminatedTeams && team.name && eliminatedTeams.has(normalizeTeamName(team.name));
   return `
     <div class="team-slot ${isSelected ? 'selected' : ''} ${locked ? 'locked' : ''} ${statusClass} ${isEliminated ? 'team-eliminated' : ''}" ${clickHandler}>
       <span class="seed">${team.seed}</span>
@@ -925,7 +931,7 @@ function renderFinalFour(picks, locked, pickStatus) {
   const sf2Winner = parseTeamStr(sf2Pick);
   const champion = parseTeamStr(champPick);
   const eliminatedTeams = getEliminatedTeams();
-  const champEliminated = champion && champion.name && eliminatedTeams.has(champion.name.toLowerCase());
+  const champEliminated = champion && champion.name && eliminatedTeams.has(normalizeTeamName(champion.name));
 
   return `
     <div class="ff-container">
@@ -1042,7 +1048,10 @@ function renderBracketsLeaderboard() {
                 <div class="lb-card-name">${escapeHtml(e.display_name)}</div>
                 <div class="lb-card-sub">${escapeHtml(e.label)} &middot; TB: ${tbText}${tbDiff}</div>
               </div>
-              <div class="lb-card-value">${e.score}<span class="lb-card-unit">pts</span></div>
+              <div class="lb-card-value">
+                ${e.score}<span class="lb-card-unit">pts</span>
+                <div style="font-size:11px;color:var(--text-faint);font-weight:400;">max ${e.max_possible}</div>
+              </div>
             </div>`;
         }).join('')}
       </div>`;
@@ -1057,6 +1066,7 @@ function renderBracketsLeaderboard() {
             <th>Name</th>
             <th>Bracket</th>
             <th>Score</th>
+            <th>Max</th>
             <th>TB</th>
           </tr>
         </thead>
@@ -1072,6 +1082,7 @@ function renderBracketsLeaderboard() {
                 </td>
                 <td>${escapeHtml(e.label)}</td>
                 <td class="lb-score">${e.score}</td>
+                <td style="font-size:13px;color:var(--text-muted);">${e.max_possible}</td>
                 <td class="lb-tb">${e.tiebreaker_score !== null ? e.tiebreaker_score : '-'}${e.tiebreaker_diff !== null ? ` <span style="font-size:11px;color:var(--text-faint);">(${e.tiebreaker_diff > 0 ? '+' : ''}${e.tiebreaker_diff})</span>` : ''}</td>
               </tr>
             `;

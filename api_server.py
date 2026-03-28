@@ -1654,6 +1654,7 @@ ROUND_NAME_MAP = {
     "2nd Round": 2,
     "Sweet 16": 3,
     "Elite Eight": 4,
+    "Elite 8": 4,
     "Final Four": 5,
     "National Championship": 6,
 }
@@ -1856,9 +1857,8 @@ def get_tournament_schedule():
         dates_to_check = []
         for ds in TOURNAMENT_DATES:
             d = datetime.date(int(ds[:4]), int(ds[4:6]), int(ds[6:8]))
-            if d >= today:
-                dates_to_check.append(ds)
-            elif d == today - datetime.timedelta(days=1):
+            # Include today, yesterday, and up to 2 days back, plus all future dates
+            if d >= today - datetime.timedelta(days=2):
                 dates_to_check.append(ds)
 
         # Also always include today
@@ -1867,7 +1867,7 @@ def get_tournament_schedule():
             dates_to_check.insert(0, today_str)
 
         all_games = []
-        for ds in dates_to_check[:3]:  # Limit to 3 dates max
+        for ds in dates_to_check[:5]:  # Limit to 5 dates max
             data = fetch_espn_scoreboard(ds)
             if data:
                 games = parse_espn_games(data)
@@ -1959,6 +1959,7 @@ def score_bracket(picks, all_results):
     bracket_round_to_scoring = {0: 1, 1: 2, 2: 3, 3: 4}
 
     total = 0
+    max_possible = 0
     round_scores = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0}
     correct_picks = []
     wrong_picks = []
@@ -1969,6 +1970,8 @@ def score_bracket(picks, all_results):
     winners_by_round = {}
     # losers_by_round[round_num] = list of team names that played but lost
     losers_by_round = {}
+    # Track all eliminated teams (for max possible points calc)
+    all_eliminated = set()
     for r in all_results:
         rn = r["round"]
         if rn not in winners_by_round:
@@ -1979,8 +1982,10 @@ def score_bracket(picks, all_results):
             # The loser is whichever team is not the winner
             if r["team1_name"] != r["winner_name"]:
                 losers_by_round[rn].append(r["team1_name"])
+                all_eliminated.add(normalize_team_name(r["team1_name"]))
             if r["team2_name"] != r["winner_name"]:
                 losers_by_round[rn].append(r["team2_name"])
+                all_eliminated.add(normalize_team_name(r["team2_name"]))
 
     for key, pick_str in picks.items():
         if not pick_str:
@@ -2009,15 +2014,21 @@ def score_bracket(picks, all_results):
 
         if any(names_match(picked_name, w) for w in round_winners):
             total += pts
+            max_possible += pts
             round_scores[scoring_round] += pts
             correct_picks.append(key)
         elif any(names_match(picked_name, l) for l in round_losers):
             wrong_picks.append(key)
         else:
+            # Pending pick — still possible points if team is not eliminated
+            picked_normalized = normalize_team_name(picked_name)
+            if picked_normalized not in all_eliminated:
+                max_possible += pts
             pending_picks.append(key)
 
     return {
         "total": total,
+        "max_possible": max_possible,
         "round_scores": round_scores,
         "correct_picks": correct_picks,
         "wrong_picks": wrong_picks,
@@ -2063,6 +2074,7 @@ def get_leaderboard():
                 "avatar_data": b["avatar_data"],
                 "label": b["label"],
                 "score": scored["total"],
+                "max_possible": scored["max_possible"],
                 "round_scores": scored["round_scores"],
                 "tiebreaker_score": tb,
                 "tiebreaker_diff": tb_diff,
