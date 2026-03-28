@@ -2112,11 +2112,14 @@ def family_leaderboard():
         # First, sync family_tournament_results from main tournament_results
         cur.execute("""
             UPDATE family_tournament_results f
-            SET team1_score = t.team1_score, team2_score = t.team2_score,
+            SET team1_name = t.team1_name, team1_seed = t.team1_seed,
+                team1_score = t.team1_score,
+                team2_name = t.team2_name, team2_seed = t.team2_seed,
+                team2_score = t.team2_score,
                 winner_name = t.winner_name, winner_seed = t.winner_seed,
                 game_state = t.game_state, updated_at = t.updated_at
             FROM tournament_results t
-            WHERE f.game_key = t.game_key AND t.game_state = 'final' AND f.game_state != 'final'
+            WHERE f.game_key = t.game_key
         """)
         db.commit()
 
@@ -2201,11 +2204,14 @@ def get_family_results():
     # Sync first
     cur.execute("""
         UPDATE family_tournament_results f
-        SET team1_score = t.team1_score, team2_score = t.team2_score,
+        SET team1_name = t.team1_name, team1_seed = t.team1_seed,
+            team1_score = t.team1_score,
+            team2_name = t.team2_name, team2_seed = t.team2_seed,
+            team2_score = t.team2_score,
             winner_name = t.winner_name, winner_seed = t.winner_seed,
             game_state = t.game_state, updated_at = t.updated_at
         FROM tournament_results t
-        WHERE f.game_key = t.game_key AND t.game_state = 'final' AND f.game_state != 'final'
+        WHERE f.game_key = t.game_key
     """)
     db.commit()
     cur.execute("SELECT * FROM family_tournament_results ORDER BY game_date, game_key")
