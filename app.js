@@ -1139,7 +1139,10 @@ function renderFamilyLeaderboard() {
                 <div class="lb-card-name">${escapeHtml(e.member_name)}</div>
                 <div class="lb-card-sub">${correctCount}\u2713 ${wrongCount}\u2717 &middot; TB: ${tbText}${tbDiff}</div>
               </div>
-              <div class="lb-card-value">${e.score}<span class="lb-card-unit">pts</span></div>
+              <div class="lb-card-value">
+                ${e.score}<span class="lb-card-unit">pts</span>
+                <div style="font-size:11px;color:var(--text-faint);font-weight:400;">max ${e.max_possible}</div>
+              </div>
             </div>`;
         }).join('')}
       </div>`;
@@ -1153,6 +1156,7 @@ function renderFamilyLeaderboard() {
             <th>#</th>
             <th>Name</th>
             <th>Score</th>
+            <th>Max</th>
             <th>Correct</th>
             <th>Wrong</th>
             <th>TB</th>
@@ -1170,6 +1174,7 @@ function renderFamilyLeaderboard() {
                   ${escapeHtml(e.member_name)}
                 </td>
                 <td class="lb-score">${e.score}</td>
+                <td style="font-size:13px;color:var(--text-muted);">${e.max_possible}</td>
                 <td>${correctCount}</td>
                 <td>${wrongCount}</td>
                 <td class="lb-tb">${e.tiebreaker !== null && e.tiebreaker !== undefined ? e.tiebreaker : '-'}${e.tiebreaker_diff !== null && e.tiebreaker_diff !== undefined ? ` <span style="font-size:11px;color:var(--text-faint);">(${e.tiebreaker_diff > 0 ? '+' : ''}${e.tiebreaker_diff})</span>` : ''}</td>

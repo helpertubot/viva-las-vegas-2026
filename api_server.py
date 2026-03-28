@@ -2151,6 +2151,7 @@ def family_leaderboard():
                 "bracket_id": b["id"],
                 "member_name": b["member_name"],
                 "score": scored["total"],
+                "max_possible": scored["max_possible"],
                 "round_scores": scored["round_scores"],
                 "tiebreaker": tb,
                 "tiebreaker_diff": tb_diff,
