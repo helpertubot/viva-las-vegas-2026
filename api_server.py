@@ -1970,8 +1970,8 @@ def score_bracket(picks, all_results):
     winners_by_round = {}
     # losers_by_round[round_num] = list of team names that played but lost
     losers_by_round = {}
-    # Track all eliminated teams (for max possible points calc)
-    all_eliminated = set()
+    # Track all eliminated teams (raw names for names_match comparison)
+    all_eliminated_names = []
     for r in all_results:
         rn = r["round"]
         if rn not in winners_by_round:
@@ -1982,10 +1982,10 @@ def score_bracket(picks, all_results):
             # The loser is whichever team is not the winner
             if r["team1_name"] != r["winner_name"]:
                 losers_by_round[rn].append(r["team1_name"])
-                all_eliminated.add(normalize_team_name(r["team1_name"]))
+                all_eliminated_names.append(r["team1_name"])
             if r["team2_name"] != r["winner_name"]:
                 losers_by_round[rn].append(r["team2_name"])
-                all_eliminated.add(normalize_team_name(r["team2_name"]))
+                all_eliminated_names.append(r["team2_name"])
 
     for key, pick_str in picks.items():
         if not pick_str:
@@ -2019,11 +2019,12 @@ def score_bracket(picks, all_results):
             correct_picks.append(key)
         elif any(names_match(picked_name, l) for l in round_losers):
             wrong_picks.append(key)
+        elif any(names_match(picked_name, e) for e in all_eliminated_names):
+            # Team was eliminated in an earlier round — this pick is wrong
+            wrong_picks.append(key)
         else:
-            # Pending pick — still possible points if team is not eliminated
-            picked_normalized = normalize_team_name(picked_name)
-            if picked_normalized not in all_eliminated:
-                max_possible += pts
+            # Truly pending: team is still alive
+            max_possible += pts
             pending_picks.append(key)
 
     return {
