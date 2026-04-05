@@ -1641,8 +1641,8 @@ BRACKET_LOCK_TIMESTAMP = 1773932400  # 2026-03-19 15:00 UTC = 11:00 AM ET = 8:00
 TOURNAMENT_DATES = [
     "20260319", "20260320",  # R1
     "20260321", "20260322",  # R2
-    "20260327", "20260328",  # Sweet 16
-    "20260329", "20260330",  # Elite 8
+    "20260326", "20260327",  # Sweet 16
+    "20260328", "20260329",  # Elite 8
     "20260404",              # Final Four
     "20260406",              # Championship
 ]
@@ -1704,7 +1704,7 @@ def parse_espn_games(data):
 
         # Parse region from notes
         region = ""
-        for reg in ["East", "West", "South", "Midwest"]:
+        for reg in ["Midwest", "South", "East", "West"]:
             if reg.lower() in notes.lower():
                 region = reg
                 break
