@@ -932,6 +932,10 @@ function renderFinalFour(picks, locked, pickStatus) {
   const champion = parseTeamStr(champPick);
   const eliminatedTeams = getEliminatedTeams();
   const champEliminated = champion && champion.name && eliminatedTeams.has(normalizeTeamName(champion.name));
+  const champStatus = pickStatus ? pickStatus[champKey] : null;
+  const champBoxClass = champion
+    ? (champStatus === 'correct' ? 'champ-correct' : champStatus === 'wrong' ? 'champ-wrong' : (champEliminated ? 'champ-eliminated' : ''))
+    : 'empty';
 
   return `
     <div class="ff-container">
@@ -951,9 +955,9 @@ function renderFinalFour(picks, locked, pickStatus) {
             ${renderTeamSlot(sf1Winner, champKey, champPick, locked, pickStatus ? pickStatus[champKey] : null, eliminatedTeams)}
             ${renderTeamSlot(sf2Winner, champKey, champPick, locked, pickStatus ? pickStatus[champKey] : null, eliminatedTeams)}
           </div>
-          <div class="ff-champion-box ${champion ? '' : 'empty'} ${champEliminated ? 'champ-eliminated' : ''}">
+          <div class="ff-champion-box ${champBoxClass}">
             <div class="ff-champion-label">🏆 Champion</div>
-            <div class="ff-champion-name ${champEliminated ? 'team-name-eliminated' : ''}">${champion ? champion.name : 'TBD'}</div>
+            <div class="ff-champion-name ${champEliminated || champStatus === 'wrong' ? 'team-name-eliminated' : ''}">${champion ? champion.name : 'TBD'}</div>
           </div>
         </div>
 
@@ -2916,6 +2920,9 @@ function navigate(view) {
   if (view === 'leaderboard') {
     Promise.all([loadTournamentData(), loadCombinedStandings(), loadFamilyLeaderboard()]).then(() => render());
   }
+  if (view === 'view-bracket') {
+    loadTournamentData().then(() => render());
+  }
   if (view === 'trip' || view === 'profile') {
     loadStays().then(() => render());
   }
@@ -3385,8 +3392,8 @@ async function loadAllData() {
   config = cfg;
   // Load taunts as part of initial data so they're always visible
   await loadPuterTaunts();
-  // Load tournament data in background (non-blocking)
-  loadTournamentData();
+  // Load tournament data in background, re-render when ready
+  loadTournamentData().then(() => render());
 }
 
 async function loadTournamentData() {
